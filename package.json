@@ -1,0 +1,99 @@
+{
+  "name": "llm-patch-applicator",
+  "displayName": "LLM Patch Applicator",
+  "description": "Apply code changes from an LLM response directly from clipboard.",
+  "version": "0.1.0",
+  "publisher": "sample",
+  "engines": { "vscode": "^1.75.0" },
+  "activationEvents": ["onCommand:llm-patcher.applyFromClipboard"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "llm-patcher.applyFromClipboard",
+        "title": "LLM Patcher: Apply Changes from Clipboard"
+      },
+      {
+        "command": "llm-patcher.previewChange",
+        "title": "LLM Patcher: Preview Changes",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "llm-patcher.applyChange",
+        "title": "LLM Patcher: Apply Change",
+        "icon": "$(check)"
+      },
+      {
+        "command": "llm-patcher.discardChange",
+        "title": "LLM Patcher: Discard Change",
+        "icon": "$(x)"
+      },
+      {
+        "command": "llm-patcher.applyAll",
+        "title": "LLM Patcher: Apply All Changes",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "llm-patcher.discardAll",
+        "title": "LLM Patcher: Discard All Changes",
+        "icon": "$(trash)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "llm-patcher",
+          "title": "LLM Patcher",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "llm-patcher": [
+        {
+          "id": "llm-patcher-view",
+          "name": "LLM Patcher"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "llm-patcher.applyAll",
+          "when": "view == llm-patcher-view",
+          "group": "navigation@1"
+        },
+        {
+          "command": "llm-patcher.discardAll",
+          "when": "view == llm-patcher-view",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "llm-patcher.previewChange",
+          "when": "viewItem == fileChange",
+          "group": "inline"
+        },
+        {
+          "command": "llm-patcher.applyChange",
+          "when": "viewItem == fileChange",
+          "group": "inline"
+        },
+        {
+          "command": "llm-patcher.discardChange",
+          "when": "viewItem == fileChange",
+          "group": "inline"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "test": "echo \"No tests\""
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0",
+    "typescript": "^4.9.0"
+  }
+}

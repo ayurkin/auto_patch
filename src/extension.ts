@@ -17,6 +17,15 @@ export function parseLLMResponse(text: string): FileChange[] {
   return results;
 }
 
+function getNonce() {
+  let text = '';
+  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  for (let i = 0; i < 32; i++) {
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  }
+  return text;
+}
+
 class FileChangeItem extends vscode.TreeItem {
   constructor(public readonly change: FileChange) {
     super(change.filePath, vscode.TreeItemCollapsibleState.None);
@@ -112,11 +121,13 @@ class InputViewProvider implements vscode.WebviewViewProvider {
 
   private _getHtmlForWebview(webview: vscode.Webview): string {
     const stylesUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'resources', 'webview.css'));
+    const nonce = getNonce();
     return `
       <!DOCTYPE html>
       <html lang="en">
       <head>
         <meta charset="UTF-8">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <link href="${stylesUri}" rel="stylesheet">
         <title>LLM Patcher Input</title>
@@ -124,12 +135,14 @@ class InputViewProvider implements vscode.WebviewViewProvider {
       <body>
         <textarea id="llm-response" placeholder="Paste LLM response here..."></textarea>
         <button id="preview-button">Preview Changes</button>
-        <script>
+        <script nonce="${nonce}">
           const vscode = acquireVsCodeApi();
+          const textarea = document.getElementById('llm-response');
           document.getElementById('preview-button').addEventListener('click', () => {
-            const text = document.getElementById('llm-response').value;
+            const text = textarea.value;
             vscode.postMessage({ command: 'previewChanges', text: text });
           });
+          textarea.focus();
         </script>
       </body>
       </html>

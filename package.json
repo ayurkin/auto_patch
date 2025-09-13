@@ -76,11 +76,6 @@
       ],
       "view/item/context": [
         {
-          "command": "llm-patcher.previewChange",
-          "when": "viewItem == fileChange && workspaceFolders",
-          "group": "inline"
-        },
-        {
           "command": "llm-patcher.applyChange",
           "when": "viewItem == fileChange && workspaceFolders",
           "group": "inline"

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as os from 'os';
 
 export interface FileChange {
   filePath: string;
@@ -7,13 +8,33 @@ export interface FileChange {
 
 export function parseLLMResponse(text: string): FileChange[] {
   const results: FileChange[] = [];
-  const pattern = /<!-- FILE: (.*?) -->\s*```(?:[a-z]+)?\s*([\s\S]*?)\s*```/g;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(text)) !== null) {
-    const filePath = match[1].trim();
-    const newContent = match[2];
-    results.push({ filePath, newContent });
+  const fileMarkerPattern = /<!-- FILE: (.*?) -->/g;
+  const codeBlockPattern = /```(?:[a-z]+)?\s*([\s\S]*?)\s*```/;
+
+  const markers = [];
+  let match;
+  while ((match = fileMarkerPattern.exec(text)) !== null) {
+    markers.push({
+      filePath: match[1].trim(),
+      startIndex: match.index,
+      markerLength: match[0].length,
+    });
   }
+
+  for (let i = 0; i < markers.length; i++) {
+    const start = markers[i].startIndex + markers[i].markerLength;
+    const end = i + 1 < markers.length ? markers[i + 1].startIndex : text.length;
+    const contentSlice = text.substring(start, end);
+
+    const codeMatch = contentSlice.match(codeBlockPattern);
+    if (codeMatch) {
+      results.push({
+        filePath: markers[i].filePath,
+        newContent: codeMatch[1],
+      });
+    }
+  }
+
   return results;
 }
 
@@ -24,6 +45,23 @@ function getNonce() {
     text += possible.charAt(Math.floor(Math.random() * possible.length));
   }
   return text;
+}
+
+function normalizeChanges(changes: FileChange[]): FileChange[] {
+    let eol = vscode.workspace.getConfiguration('files').get('eol', 'auto');
+    if (eol === 'auto') {
+        eol = os.EOL;
+    }
+
+    return changes.map(change => {
+        // First, normalize all line endings to LF (\n)
+        let newContent = change.newContent.replace(/\r\n/g, '\n');
+        // Then, convert to the target EOL
+        if (eol === '\r\n') {
+            newContent = newContent.replace(/\n/g, '\r\n');
+        }
+        return { ...change, newContent };
+    });
 }
 
 class FileChangeItem extends vscode.TreeItem {
@@ -120,10 +158,11 @@ class InputViewProvider implements vscode.WebviewViewProvider {
             return;
           }
           const parsed = parseLLMResponse(message.text);
-          if (parsed.length === 0) {
+          const normalized = normalizeChanges(parsed);
+          if (normalized.length === 0) {
             vscode.window.showInformationMessage('LLM Patcher: No valid file changes found in input.');
           }
-          this._changeProvider.setChanges(parsed);
+          this._changeProvider.setChanges(normalized);
           return;
         case 'saveState':
           this._context.workspaceState.update('llm-patcher.lastInput', message.text);
@@ -195,7 +234,9 @@ export function activate(context: vscode.ExtensionContext) {
 
   const inputViewProvider = new InputViewProvider(context, fileChangeProvider);
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider('llm-patcher-input-view', inputViewProvider)
+    vscode.window.registerWebviewViewProvider('llm-patcher-input-view', inputViewProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    })
   );
 
   context.subscriptions.push(
@@ -206,11 +247,12 @@ export function activate(context: vscode.ExtensionContext) {
       }
       const text = await vscode.env.clipboard.readText();
       const parsed = parseLLMResponse(text);
-      if (parsed.length === 0) {
+      const normalized = normalizeChanges(parsed);
+      if (normalized.length === 0) {
         vscode.window.showInformationMessage('LLM Patcher: No valid file changes found in clipboard.');
         return;
       }
-      fileChangeProvider.setChanges(parsed);
+      fileChangeProvider.setChanges(normalized);
     })
   );
 
@@ -260,4 +302,3 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {}
-

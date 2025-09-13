@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as os from 'os';
+import * as path from 'path';
 
 export interface FileChange {
   filePath: string;
@@ -8,8 +9,14 @@ export interface FileChange {
 
 export function parseLLMResponse(text: string): FileChange[] {
   const results: FileChange[] = [];
-  const fileMarkerPattern = /<!-- FILE: (.*?) -->/g;
-  const codeBlockPattern = /```(?:[a-z]+)?\s*([\s\S]*?)\s*```/;
+  // FIX 1: Anchor the pattern to the start of a line and use the multiline flag 'm'.
+  // This prevents the parser from matching the pattern inside code comments or strings.
+  const fileMarkerPattern = /^<!-- FILE: (.*?) -->/gm;
+
+  // FIX 2: Make the content-capturing group greedy (*) and require newlines around it.
+  // This ensures it captures the entire content of a code block, even if the
+  // content itself contains code block fences (e.g., in a Markdown file).
+  const codeBlockPattern = /```(?:[a-z]+)?\s*\n([\s\S]*)\n```/;
 
   const markers = [];
   let match;
@@ -137,7 +144,7 @@ class InputViewProvider implements vscode.WebviewViewProvider {
     private readonly _changeProvider: FileChangeProvider
   ) {}
 
-  resolveWebviewView(webviewView: vscode.WebviewView) {
+  public resolveWebviewView(webviewView: vscode.WebviewView) {
     this._view = webviewView;
 
     webviewView.webview.options = {
@@ -153,16 +160,7 @@ class InputViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage(message => {
       switch (message.command) {
         case 'previewChanges':
-          if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
-            vscode.window.showErrorMessage('LLM Patcher: Please open a folder in the workspace.');
-            return;
-          }
-          const parsed = parseLLMResponse(message.text);
-          const normalized = normalizeChanges(parsed);
-          if (normalized.length === 0) {
-            vscode.window.showInformationMessage('LLM Patcher: No valid file changes found in input.');
-          }
-          this._changeProvider.setChanges(normalized);
+          this._runPreview(message.text);
           return;
         case 'saveState':
           this._context.workspaceState.update('llm-patcher.lastInput', message.text);
@@ -174,6 +172,29 @@ class InputViewProvider implements vscode.WebviewViewProvider {
           return;
       }
     });
+  }
+
+  public async pasteAndPreview() {
+    const text = await vscode.env.clipboard.readText();
+    this._view?.webview.postMessage({ command: 'restoreState', text });
+    this._context.workspaceState.update('llm-patcher.lastInput', text);
+    this._runPreview(text);
+  }
+
+  private _runPreview(text: string) {
+    if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
+      vscode.window.showErrorMessage('LLM Patcher: Please open a folder in the workspace.');
+      return;
+    }
+    const parsed = parseLLMResponse(text);
+    const normalized = normalizeChanges(parsed);
+    if (normalized.length === 0) {
+      vscode.window.showInformationMessage('LLM Patcher: No valid file changes found in input.');
+    }
+    this._changeProvider.setChanges(normalized);
+    if (normalized.length > 0) {
+      vscode.commands.executeCommand('llm-patcher-changes-view.focus');
+    }
   }
 
   private _getHtmlForWebview(webview: vscode.Webview): string {
@@ -241,42 +262,42 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('llm-patcher.applyFromClipboard', async () => {
-      if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
-        vscode.window.showErrorMessage('LLM Patcher: Please open a folder in the workspace.');
-        return;
-      }
-      const text = await vscode.env.clipboard.readText();
-      const parsed = parseLLMResponse(text);
-      const normalized = normalizeChanges(parsed);
-      if (normalized.length === 0) {
-        vscode.window.showInformationMessage('LLM Patcher: No valid file changes found in clipboard.');
-        return;
-      }
-      fileChangeProvider.setChanges(normalized);
+      await inputViewProvider.pasteAndPreview();
     })
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('llm-patcher.previewChange', async (item: FileChangeItem) => {
-      const root = vscode.workspace.workspaceFolders![0].uri;
+      if (!vscode.workspace.workspaceFolders) { return; }
+      const root = vscode.workspace.workspaceFolders[0].uri;
       const fileUri = vscode.Uri.joinPath(root, item.change.filePath);
       const previewUri = vscode.Uri.parse(`${scheme}:/${item.change.filePath}`);
       try {
         await vscode.workspace.fs.stat(fileUri);
         await vscode.commands.executeCommand('vscode.diff', fileUri, previewUri, `${item.change.filePath} (Preview)`);
       } catch {
-        await vscode.window.showTextDocument(previewUri);
+        await vscode.window.showTextDocument(previewUri, { preview: true });
       }
     })
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('llm-patcher.applyChange', async (item: FileChangeItem) => {
-      const root = vscode.workspace.workspaceFolders![0].uri;
+      if (!vscode.workspace.workspaceFolders) { return; }
+      const root = vscode.workspace.workspaceFolders[0].uri;
       const fileUri = vscode.Uri.joinPath(root, item.change.filePath);
-      await vscode.workspace.fs.writeFile(fileUri, Buffer.from(item.change.newContent, 'utf8'));
-      await vscode.window.showTextDocument(fileUri);
-      fileChangeProvider.removeChange(item.change);
+      
+      try {
+        const parentUri = vscode.Uri.file(path.dirname(fileUri.fsPath));
+        await vscode.workspace.fs.createDirectory(parentUri);
+        await vscode.workspace.fs.writeFile(fileUri, Buffer.from(item.change.newContent, 'utf8'));
+        
+        fileChangeProvider.removeChange(item.change);
+        await vscode.window.showTextDocument(fileUri);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        vscode.window.showErrorMessage(`Failed to apply change to ${item.change.filePath}: ${message}`);
+      }
     })
   );
 
@@ -288,9 +309,41 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('llm-patcher.applyAll', async () => {
-      for (const change of [...fileChangeProvider.getChanges()]) {
-        await vscode.commands.executeCommand('llm-patcher.applyChange', new FileChangeItem(change));
+      const changes = fileChangeProvider.getChanges();
+      if (changes.length === 0) {
+        vscode.window.showInformationMessage('No changes to apply.');
+        return;
       }
+
+      await vscode.window.withProgress({
+          location: vscode.ProgressLocation.Notification,
+          title: "Applying LLM Changes...",
+          cancellable: false
+      }, async (progress) => {
+          const total = changes.length;
+          if (!vscode.workspace.workspaceFolders) { return; }
+          const root = vscode.workspace.workspaceFolders[0].uri;
+
+          for (let i = 0; i < total; i++) {
+              const change = changes[i];
+              progress.report({ message: `Applying ${change.filePath}`, increment: (100 / total) });
+              
+              const fileUri = vscode.Uri.joinPath(root, change.filePath);
+              
+              try {
+                  const parentUri = vscode.Uri.file(path.dirname(fileUri.fsPath));
+                  await vscode.workspace.fs.createDirectory(parentUri);
+                  await vscode.workspace.fs.writeFile(fileUri, Buffer.from(change.newContent, 'utf8'));
+              } catch (error) {
+                  const message = error instanceof Error ? error.message : String(error);
+                  vscode.window.showErrorMessage(`Failed to apply change to ${change.filePath}: ${message}. Aborting.`);
+                  return;
+              }
+          }
+          
+          fileChangeProvider.clear();
+          vscode.window.showInformationMessage(`${total} changes applied successfully.`);
+      });
     })
   );
 

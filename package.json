@@ -11,7 +11,8 @@
     "commands": [
       {
         "command": "llm-patcher.applyFromClipboard",
-        "title": "LLM Patcher: Apply Changes from Clipboard"
+        "title": "Paste from Clipboard and Preview",
+        "icon": "$(clippy)"
       },
       {
         "command": "llm-patcher.previewChange",
@@ -63,6 +64,11 @@
     },
     "menus": {
       "view/title": [
+        {
+          "command": "llm-patcher.applyFromClipboard",
+          "when": "view == llm-patcher-input-view",
+          "group": "navigation"
+        },
         {
           "command": "llm-patcher.applyAll",
           "when": "view == llm-patcher-changes-view && workspaceFolders",

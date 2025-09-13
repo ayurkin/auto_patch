@@ -1,12 +1,30 @@
 {
-  "name": "llm-patch-applicator",
-  "displayName": "LLM Patch Applicator",
+  "name": "auto-patch",
+  "displayName": "Auto Patch",
   "description": "Apply code changes from an LLM response directly from clipboard.",
   "version": "0.1.0",
-  "publisher": "sample",
-  "engines": {
-    "vscode": "^1.75.0"
+  "publisher": "ayurkin",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ayurkin/auto_patch.git"
   },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "llm",
+    "ai",
+    "codegen",
+    "patch",
+    "apply",
+    "clipboard",
+    "auto"
+  ],
   "activationEvents": [
     "onView:llm-patcher-input-view",
     "onCommand:llm-patcher.applyFromClipboard"
@@ -49,7 +67,7 @@
       "activitybar": [
         {
           "id": "llm-patcher",
-          "title": "LLM Patcher",
+          "title": "Auto Patch",
           "icon": "resources/icon.svg"
         }
       ]
@@ -108,9 +126,9 @@
     "test": "echo \"No tests yet\""
   },
   "devDependencies": {
-    "@types/vscode": "^1.75.0",
-    "typescript": "^4.9.0",
-    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3",
+    "@types/node": "^18.19.0",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "eslint": "^8.56.0",

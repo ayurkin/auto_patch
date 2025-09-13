@@ -13,6 +13,7 @@ export function parseLLMResponse(text: string): FileChange[] {
 
   const markers = [];
   let match;
+  // First, find all file markers and their positions.
   while ((match = fileMarkerPattern.exec(text)) !== null) {
     markers.push({
       filePath: match[1].trim(),
@@ -21,29 +22,54 @@ export function parseLLMResponse(text: string): FileChange[] {
     });
   }
 
+  // Now, process the text between markers.
   for (let i = 0; i < markers.length; i++) {
-    const start = markers[i].startIndex + markers[i].markerLength;
-    const end = i + 1 < markers.length ? markers[i + 1].startIndex : text.length;
-    const contentSlice = text.substring(start, end);
+    const sliceStart = markers[i].startIndex + markers[i].markerLength;
+    const sliceEnd = i + 1 < markers.length ? markers[i + 1].startIndex : text.length;
+    let contentSlice = text.substring(sliceStart, sliceEnd);
 
-    const codeBlockStartIndex = contentSlice.indexOf('```');
-    const codeBlockEndIndex = contentSlice.lastIndexOf('```');
+    // The code block should start right after the marker. Trim leading whitespace.
+    contentSlice = contentSlice.trimStart();
 
-    if (codeBlockStartIndex !== -1 && codeBlockEndIndex > codeBlockStartIndex) {
-      const rawBlockContent = contentSlice.substring(codeBlockStartIndex + 3, codeBlockEndIndex);
-      const firstNewlineIndex = rawBlockContent.indexOf('\n');
-      
-      // If there's no newline, it could be an empty block like ``` ``` or ```go```.
-      // The content is effectively empty. Otherwise, the content starts after the first newline.
-      const newContent = firstNewlineIndex === -1
-        ? ''
-        : rawBlockContent.substring(firstNewlineIndex + 1);
-
-      results.push({
-        filePath: markers[i].filePath,
-        newContent: newContent,
-      });
+    // We expect the content to be in a markdown code block.
+    if (!contentSlice.startsWith('```')) {
+      continue; // No code block found immediately after the marker.
     }
+
+    // Find the first line break after '```' to get past the language identifier (e.g., ```typescript).
+    const firstLineBreakIndex = contentSlice.indexOf('\n');
+    if (firstLineBreakIndex === -1) {
+        continue; // Malformed block, no newline after ```lang
+    }
+
+    // The actual content starts after this first line.
+    const contentStart = firstLineBreakIndex + 1;
+
+    // The code block must end with ```. It could be at the very end of the slice,
+    // or followed by whitespace. We check the trimmed version of the slice.
+    const trimmedSlice = contentSlice.trimEnd();
+    if (!trimmedSlice.endsWith('```')) {
+        continue; // Malformed, no closing ``` at the end.
+    }
+
+    // The end of the content is just before the final ```
+    const contentEnd = contentSlice.lastIndexOf('```');
+
+    // If lastIndexOf is not found or is before the start, something is wrong.
+    if (contentEnd <= contentStart) {
+        results.push({
+            filePath: markers[i].filePath,
+            newContent: '', // Assume an empty block like ``` ```
+        });
+        continue;
+    }
+
+    const newContent = contentSlice.substring(contentStart, contentEnd).trimEnd(); // Trim trailing newline from content
+
+    results.push({
+      filePath: markers[i].filePath,
+      newContent: newContent,
+    });
   }
 
   return results;
@@ -121,7 +147,7 @@ class FileChangeProvider implements vscode.TreeDataProvider<FileChangeItem> {
   }
 
   async getTreeItem(element: FileChangeItem): Promise<vscode.TreeItem> {
-    if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0]) {
+    if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
       const root = vscode.workspace.workspaceFolders[0].uri;
       const fileUri = vscode.Uri.joinPath(root, element.change.filePath);
       try {
@@ -334,7 +360,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('llm-patcher.previewChange', async (item: FileChangeItem) => {
-      if (!vscode.workspace.workspaceFolders) { return; }
+      if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) { return; }
       const root = vscode.workspace.workspaceFolders[0].uri;
       const fileUri = vscode.Uri.joinPath(root, item.change.filePath);
       const previewUri = vscode.Uri.parse(`${scheme}:/${item.change.filePath}`);

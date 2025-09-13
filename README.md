@@ -1,27 +1,71 @@
 # LLM Patch Applicator
 
-VS Code extension for applying code changes from an LLM response without manual copy‑paste.
+A VS Code extension for applying code changes from a Large Language Model (LLM) response without manual copy-paste.
 
-## Getting Started
+## Installation for Daily Use
 
-1. **Install dependencies**
+To use this extension in your main VS Code instance without publishing it, you can package it as a `.vsix` file and install it locally.
+
+**Prerequisites:**
+* [Node.js and npm](https://nodejs.org/en/)
+* [Git](https://git-scm.com/)
+
+**Steps:**
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/your-repo/llm-patch-applicator.git
+   cd llm-patch-applicator
+   ```
+
+2. **Install dependencies:**
    ```bash
    npm install
    ```
-2. **Build the extension**
+
+3. **Install the VS Code Extension packager (`vsce`):**
+   ```bash
+   npm install -g @vscode/vsce
+   ```
+
+4. **Package the extension:**
+   This command will create a `.vsix` file (e.g., `llm-patch-applicator-0.1.0.vsix`).
+   ```bash
+   vsce package
+   ```
+
+5. **Install the extension in VS Code:**
+   * Open VS Code.
+   * Go to the **Extensions** view (Ctrl+Shift+X).
+   * Click the **...** (More Actions) menu in the top-right corner.
+   * Select **Install from VSIX...**.
+   * Choose the `.vsix` file you just created.
+   * Reload VS Code when prompted.
+
+The "LLM Patcher" icon will now appear in your Activity Bar.
+
+## How to Use
+
+1. Copy the full response from your LLM, including the special `<!-- FILE: ... -->` comments and code blocks.
+2. Click the **LLM Patcher** icon in the VS Code Activity Bar.
+3. In the **Input** view, paste the entire response into the text area.
+4. Click the **Preview Changes** button. The parsed files will appear in the **Changes** view below.
+5. Review the changes:
+   * **Single-click** a file to see a diff or preview of the new content.
+   * Use the inline icons to **Apply (`✓`)** or **Discard (`x`)** individual files.
+   * Use the buttons at the top of the **Changes** view to **Apply All** or **Discard All**.
+
+## For Development
+
+If you want to contribute to the extension itself, follow these steps:
+
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+2. **Build the extension:**
    ```bash
    npm run build
    ```
-3. **Launch in VS Code**
-   Open this folder in VS Code and press <kbd>F5</kbd> to open an Extension Development Host with the LLM Patcher loaded.
-
-## Usage
-
-1. Copy a full LLM response that contains markers of the form `<!-- FILE: path/to/file -->` followed by a Markdown code block.
-2. In the **LLM Patcher** activity bar item, open the **Input** view, paste the response into the text box, and click **Preview Changes**. You can also run **LLM Patcher: Apply Changes from Clipboard** from the Command Palette.
-3. The text you enter is saved between sessions; use **Clear** to reset the input and discard any pending changes.
-4. Review the parsed files in the **Changes** view.
-5. Use the inline actions to preview, apply, or discard individual changes, or the view buttons to apply or discard all.
-
-All file paths are resolved relative to the workspace root; nonexistent files will be created when applied.
-
+3. **Launch the Extension Development Host:**
+   Open this folder in VS Code and press **F5**. This will open a new VS Code window with the extension loaded, where you can test your changes.

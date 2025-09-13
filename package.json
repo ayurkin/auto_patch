@@ -1,0 +1,140 @@
+{
+  "name": "llm-patch-applicator",
+  "displayName": "Auto Patch",
+  "description": "Apply code changes from an LLM response directly from clipboard.",
+  "version": "0.1.3",
+  "publisher": "ayurkin",
+  "icon": "resources/icon.png",
+  "license": "MIT",
+  "readme": "README.md",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ayurkin/auto_patch.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "llm",
+    "ai",
+    "codegen",
+    "patch",
+    "apply",
+    "clipboard",
+    "auto"
+  ],
+  "activationEvents": [
+    "onView:llm-patcher-input-view",
+    "onCommand:llm-patcher.applyFromClipboard"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "llm-patcher.applyFromClipboard",
+        "title": "Paste from Clipboard and Preview",
+        "icon": "$(clippy)"
+      },
+      {
+        "command": "llm-patcher.previewChange",
+        "title": "LLM Patcher: Preview Changes",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "llm-patcher.applyChange",
+        "title": "LLM Patcher: Apply Change",
+        "icon": "$(check)"
+      },
+      {
+        "command": "llm-patcher.discardChange",
+        "title": "LLM Patcher: Discard Change",
+        "icon": "$(x)"
+      },
+      {
+        "command": "llm-patcher.applyAll",
+        "title": "LLM Patcher: Apply All Changes",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "llm-patcher.discardAll",
+        "title": "LLM Patcher: Discard All Changes",
+        "icon": "$(trash)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "llm-patcher",
+          "title": "Auto Patch",
+          "icon": "resources/icon.png"
+        }
+      ]
+    },
+    "views": {
+      "llm-patcher": [
+        {
+          "id": "llm-patcher-input-view",
+          "name": "Input",
+          "type": "webview"
+        },
+        {
+          "id": "llm-patcher-changes-view",
+          "name": "Changes"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "llm-patcher.applyFromClipboard",
+          "when": "view == llm-patcher-input-view",
+          "group": "navigation"
+        },
+        {
+          "command": "llm-patcher.applyAll",
+          "when": "view == llm-patcher-changes-view && llm-patcher.hasChanges",
+          "group": "navigation@1"
+        },
+        {
+          "command": "llm-patcher.discardAll",
+          "when": "view == llm-patcher-changes-view && llm-patcher.hasChanges",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "llm-patcher.applyChange",
+          "when": "viewItem == fileChange",
+          "group": "inline"
+        },
+        {
+          "command": "llm-patcher.discardChange",
+          "when": "viewItem == fileChange",
+          "group": "inline"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "test": "echo \"No tests yet\""
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3",
+    "@types/node": "^18.19.0",
+    "@typescript-eslint/eslint-plugin": "^5.62.0",
+    "@typescript-eslint/parser": "^5.62.0",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.2.5"
+  }
+}

@@ -19,8 +19,9 @@ VS Code extension for applying code changes from an LLM response without manual 
 
 1. Copy a full LLM response that contains markers of the form `<!-- FILE: path/to/file -->` followed by a Markdown code block.
 2. In the **LLM Patcher** activity bar item, open the **Input** view, paste the response into the text box, and click **Preview Changes**. You can also run **LLM Patcher: Apply Changes from Clipboard** from the Command Palette.
-3. Review the parsed files in the **Changes** view.
-4. Use the inline actions to preview, apply, or discard individual changes, or the view buttons to apply or discard all.
+3. The text you enter is saved between sessions; use **Clear** to reset the input and discard any pending changes.
+4. Review the parsed files in the **Changes** view.
+5. Use the inline actions to preview, apply, or discard individual changes, or the view buttons to apply or discard all.
 
 All file paths are resolved relative to the workspace root; nonexistent files will be created when applied.
 

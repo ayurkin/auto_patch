@@ -92,15 +92,25 @@ class FileChangeContentProvider implements vscode.TextDocumentContentProvider {
 }
 
 class InputViewProvider implements vscode.WebviewViewProvider {
-  constructor(private readonly _extensionUri: vscode.Uri, private readonly _changeProvider: FileChangeProvider) {}
+  private _view?: vscode.WebviewView;
+
+  constructor(
+    private readonly _context: vscode.ExtensionContext,
+    private readonly _changeProvider: FileChangeProvider
+  ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView) {
+    this._view = webviewView;
+
     webviewView.webview.options = {
       enableScripts: true,
-      localResourceRoots: [this._extensionUri],
+      localResourceRoots: [this._context.extensionUri],
     };
 
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
+
+    const lastState = this._context.workspaceState.get('llm-patcher.lastInput', '');
+    webviewView.webview.postMessage({ command: 'restoreState', text: lastState });
 
     webviewView.webview.onDidReceiveMessage(message => {
       switch (message.command) {
@@ -115,13 +125,22 @@ class InputViewProvider implements vscode.WebviewViewProvider {
           }
           this._changeProvider.setChanges(parsed);
           return;
+        case 'saveState':
+          this._context.workspaceState.update('llm-patcher.lastInput', message.text);
+          return;
+        case 'clear':
+          this._changeProvider.clear();
+          this._context.workspaceState.update('llm-patcher.lastInput', '');
+          this._view?.webview.postMessage({ command: 'restoreState', text: '' });
+          return;
       }
     });
   }
 
   private _getHtmlForWebview(webview: vscode.Webview): string {
-    const stylesUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'resources', 'webview.css'));
+    const stylesUri = webview.asWebviewUri(vscode.Uri.joinPath(this._context.extensionUri, 'resources', 'webview.css'));
     const nonce = getNonce();
+
     return `
       <!DOCTYPE html>
       <html lang="en">
@@ -134,15 +153,33 @@ class InputViewProvider implements vscode.WebviewViewProvider {
       </head>
       <body>
         <textarea id="llm-response" placeholder="Paste LLM response here..."></textarea>
-        <button id="preview-button">Preview Changes</button>
+        <div class="button-container">
+          <button id="preview-button">Preview Changes</button>
+          <button id="clear-button">Clear</button>
+        </div>
         <script nonce="${nonce}">
           const vscode = acquireVsCodeApi();
           const textarea = document.getElementById('llm-response');
-          document.getElementById('preview-button').addEventListener('click', () => {
-            const text = textarea.value;
-            vscode.postMessage({ command: 'previewChanges', text: text });
+
+          textarea.addEventListener('input', () => {
+            vscode.postMessage({ command: 'saveState', text: textarea.value });
           });
-          textarea.focus();
+
+          document.getElementById('preview-button').addEventListener('click', () => {
+            vscode.postMessage({ command: 'previewChanges', text: textarea.value });
+          });
+
+          document.getElementById('clear-button').addEventListener('click', () => {
+            vscode.postMessage({ command: 'clear' });
+          });
+
+          window.addEventListener('message', event => {
+            const message = event.data;
+            if (message.command === 'restoreState') {
+              textarea.value = message.text;
+              textarea.focus();
+            }
+          });
         </script>
       </body>
       </html>
@@ -156,7 +193,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider(scheme, new FileChangeContentProvider(fileChangeProvider)));
   vscode.window.createTreeView('llm-patcher-changes-view', { treeDataProvider: fileChangeProvider });
 
-  const inputViewProvider = new InputViewProvider(context.extensionUri, fileChangeProvider);
+  const inputViewProvider = new InputViewProvider(context, fileChangeProvider);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('llm-patcher-input-view', inputViewProvider)
   );

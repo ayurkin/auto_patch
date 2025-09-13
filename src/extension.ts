@@ -88,18 +88,25 @@ class FileChangeProvider implements vscode.TreeDataProvider<FileChangeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
+  private _updateContext(): void {
+    vscode.commands.executeCommand('setContext', 'llm-patcher.hasChanges', this._changes.length > 0);
+  }
+
   setChanges(changes: FileChange[]): void {
     this._changes = changes;
+    this._updateContext();
     this._onDidChangeTreeData.fire();
   }
 
   removeChange(change: FileChange): void {
     this._changes = this._changes.filter(c => c !== change);
+    this._updateContext();
     this._onDidChangeTreeData.fire();
   }
 
   clear(): void {
     this._changes = [];
+    this._updateContext();
     this._onDidChangeTreeData.fire();
   }
 
@@ -132,7 +139,10 @@ class FileChangeContentProvider implements vscode.TextDocumentContentProvider {
   provideTextDocumentContent(uri: vscode.Uri): string {
     const path = uri.path.startsWith('/') ? uri.path.substring(1) : uri.path;
     const change = this.provider.getChanges().find(c => c.filePath === path);
-    return change ? change.newContent : '';
+    if (change) {
+        return change.newContent;
+    }
+    return `// Change for "${path}" is no longer available.\n// It may have been applied or discarded.`;
   }
 }
 
@@ -247,7 +257,24 @@ class InputViewProvider implements vscode.WebviewViewProvider {
   }
 }
 
+async function applySingleChange(change: FileChange): Promise<vscode.Uri> {
+    if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
+        throw new Error("No workspace folder is open. Please open a folder to apply changes.");
+    }
+    const root = vscode.workspace.workspaceFolders[0].uri;
+    const fileUri = vscode.Uri.joinPath(root, change.filePath);
+
+    const parentUri = vscode.Uri.file(path.dirname(fileUri.fsPath));
+    await vscode.workspace.fs.createDirectory(parentUri);
+
+    await vscode.workspace.fs.writeFile(fileUri, Buffer.from(change.newContent, 'utf8'));
+    
+    return fileUri;
+}
+
 export function activate(context: vscode.ExtensionContext) {
+  vscode.commands.executeCommand('setContext', 'llm-patcher.hasChanges', false);
+
   const fileChangeProvider = new FileChangeProvider();
   const scheme = 'llm-patcher';
   context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider(scheme, new FileChangeContentProvider(fileChangeProvider)));
@@ -283,15 +310,12 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('llm-patcher.applyChange', async (item: FileChangeItem) => {
-      if (!vscode.workspace.workspaceFolders) { return; }
-      const root = vscode.workspace.workspaceFolders[0].uri;
-      const fileUri = vscode.Uri.joinPath(root, item.change.filePath);
-      
+      if (!item || !item.change) {
+        vscode.window.showErrorMessage('Invalid item selected for applying change.');
+        return;
+      }
       try {
-        const parentUri = vscode.Uri.file(path.dirname(fileUri.fsPath));
-        await vscode.workspace.fs.createDirectory(parentUri);
-        await vscode.workspace.fs.writeFile(fileUri, Buffer.from(item.change.newContent, 'utf8'));
-        
+        const fileUri = await applySingleChange(item.change);
         fileChangeProvider.removeChange(item.change);
         await vscode.window.showTextDocument(fileUri);
       } catch (error) {
@@ -309,7 +333,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('llm-patcher.applyAll', async () => {
-      const changes = fileChangeProvider.getChanges();
+      const changes = [...fileChangeProvider.getChanges()]; // Create a copy to iterate over
       if (changes.length === 0) {
         vscode.window.showInformationMessage('No changes to apply.');
         return;
@@ -321,28 +345,31 @@ export function activate(context: vscode.ExtensionContext) {
           cancellable: false
       }, async (progress) => {
           const total = changes.length;
-          if (!vscode.workspace.workspaceFolders) { return; }
-          const root = vscode.workspace.workspaceFolders[0].uri;
+          let appliedCount = 0;
+          let failed = false;
 
-          for (let i = 0; i < total; i++) {
-              const change = changes[i];
-              progress.report({ message: `Applying ${change.filePath}`, increment: (100 / total) });
-              
-              const fileUri = vscode.Uri.joinPath(root, change.filePath);
+          for (const change of changes) {
+              const increment = (1 / total) * 100;
+              progress.report({ message: `Applying ${change.filePath}`, increment });
               
               try {
-                  const parentUri = vscode.Uri.file(path.dirname(fileUri.fsPath));
-                  await vscode.workspace.fs.createDirectory(parentUri);
-                  await vscode.workspace.fs.writeFile(fileUri, Buffer.from(change.newContent, 'utf8'));
+                  await applySingleChange(change);
+                  fileChangeProvider.removeChange(change); // Remove from view on success
+                  appliedCount++;
               } catch (error) {
                   const message = error instanceof Error ? error.message : String(error);
-                  vscode.window.showErrorMessage(`Failed to apply change to ${change.filePath}: ${message}. Aborting.`);
-                  return;
+                  vscode.window.showErrorMessage(`Failed to apply change to ${change.filePath}: ${message}. Aborting remaining changes.`);
+                  failed = true;
+                  break; // Stop processing further changes
               }
           }
           
-          fileChangeProvider.clear();
-          vscode.window.showInformationMessage(`${total} changes applied successfully.`);
+          if (appliedCount > 0) {
+              const message = failed 
+                ? `${appliedCount} of ${total} changes applied before an error occurred.`
+                : `${appliedCount} changes applied successfully.`;
+              vscode.window.showInformationMessage(message);
+          }
       });
     })
   );

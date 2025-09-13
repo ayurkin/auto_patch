@@ -4,8 +4,13 @@
   "description": "Apply code changes from an LLM response directly from clipboard.",
   "version": "0.1.0",
   "publisher": "sample",
-  "engines": { "vscode": "^1.75.0" },
-  "activationEvents": ["onView:llm-patcher-input-view"],
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "activationEvents": [
+    "onView:llm-patcher-input-view",
+    "onCommand:llm-patcher.applyFromClipboard"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -71,12 +76,12 @@
         },
         {
           "command": "llm-patcher.applyAll",
-          "when": "view == llm-patcher-changes-view && workspaceFolders",
+          "when": "view == llm-patcher-changes-view && llm-patcher.hasChanges",
           "group": "navigation@1"
         },
         {
           "command": "llm-patcher.discardAll",
-          "when": "view == llm-patcher-changes-view",
+          "when": "view == llm-patcher-changes-view && llm-patcher.hasChanges",
           "group": "navigation@2"
         }
       ],
@@ -95,12 +100,21 @@
     }
   },
   "scripts": {
-    "build": "tsc -p .",
-    "test": "echo \"No tests\""
+    "vscode:prepublish": "npm run build",
+    "build": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "test": "echo \"No tests yet\""
   },
   "devDependencies": {
     "@types/vscode": "^1.75.0",
     "typescript": "^4.9.0",
-    "@types/node": "^18.0.0"
+    "@types/node": "^18.0.0",
+    "@typescript-eslint/eslint-plugin": "^5.62.0",
+    "@typescript-eslint/parser": "^5.62.0",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.2.5"
   }
 }

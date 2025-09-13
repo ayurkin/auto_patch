@@ -3,3 +3,8 @@ node_modules
 *.vsix
 .DS_Store
 
+# Ignore VS Code workspace settings, but not the recommended ones
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/extensions.json

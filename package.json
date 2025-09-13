@@ -4,6 +4,7 @@
   "description": "Apply code changes from an LLM response directly from clipboard.",
   "version": "0.1.0",
   "publisher": "ayurkin",
+  "icon": "resources/icon.png",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -68,7 +69,7 @@
         {
           "id": "llm-patcher",
           "title": "Auto Patch",
-          "icon": "resources/icon.svg"
+          "icon": "resources/icon.png"
         }
       ]
     },

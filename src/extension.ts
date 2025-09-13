@@ -33,13 +33,16 @@ export function parseLLMResponse(text: string): FileChange[] {
       const rawBlockContent = contentSlice.substring(codeBlockStartIndex + 3, codeBlockEndIndex);
       const firstNewlineIndex = rawBlockContent.indexOf('\n');
       
-      if (firstNewlineIndex !== -1) {
-        const newContent = rawBlockContent.substring(firstNewlineIndex + 1);
-        results.push({
-          filePath: markers[i].filePath,
-          newContent: newContent,
-        });
-      }
+      // If there's no newline, it could be an empty block like ``` ``` or ```go```.
+      // The content is effectively empty. Otherwise, the content starts after the first newline.
+      const newContent = firstNewlineIndex === -1
+        ? ''
+        : rawBlockContent.substring(firstNewlineIndex + 1);
+
+      results.push({
+        filePath: markers[i].filePath,
+        newContent: newContent,
+      });
     }
   }
 
@@ -133,13 +136,11 @@ class FileChangeProvider implements vscode.TreeDataProvider<FileChangeItem> {
 }
 
 class FileChangeContentProvider implements vscode.TextDocumentContentProvider {
-  // --- FIX: Implement onDidChange event ---
   private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
   readonly onDidChange = this._onDidChange.event;
 
   constructor(private readonly provider: FileChangeProvider) {}
 
-  // --- FIX: Add a method to fire the event ---
   public notifyChanges(scheme: string, changes: FileChange[]) {
     for (const change of changes) {
       const uri = vscode.Uri.parse(`${scheme}:/${change.filePath}`);
@@ -163,7 +164,6 @@ class InputViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly _context: vscode.ExtensionContext,
     private readonly _changeProvider: FileChangeProvider,
-    // --- FIX: Pass content provider for notifications ---
     private readonly _contentProvider: FileChangeContentProvider,
     private readonly _scheme: string
   ) {}
@@ -173,7 +173,6 @@ class InputViewProvider implements vscode.WebviewViewProvider {
     this._changeProvider.clear();
     this._context.workspaceState.update('llm-patcher.lastInput', '');
     this._view?.webview.postMessage({ command: 'restoreState', text: '' });
-    // --- FIX: Notify that old changes are now invalid ---
     this._contentProvider.notifyChanges(this._scheme, oldChanges);
   }
 
@@ -217,7 +216,6 @@ class InputViewProvider implements vscode.WebviewViewProvider {
       vscode.window.showErrorMessage('LLM Patcher: Please open a folder in the workspace.');
       return;
     }
-    // --- FIX: Get old changes before updating ---
     const oldChanges = this._changeProvider.getChanges();
     const parsed = parseLLMResponse(text);
     const normalized = normalizeChanges(parsed);
@@ -226,7 +224,8 @@ class InputViewProvider implements vscode.WebviewViewProvider {
     }
     this._changeProvider.setChanges(normalized);
 
-    // --- FIX: Notify about old and new changes to refresh all relevant diffs ---
+    // Notify VS Code about all files that might have been affected (old ones removed, new ones added)
+    // to ensure any open diff views are correctly updated.
     const allAffectedChanges = [...oldChanges, ...normalized];
     const uniquePaths = [...new Set(allAffectedChanges.map(c => c.filePath))];
     const uniqueChanges = uniquePaths.map(p => ({ filePath: p, newContent: '' })); // Content doesn't matter here
@@ -315,7 +314,6 @@ export function activate(context: vscode.ExtensionContext) {
 
   const scheme = 'llm-patcher';
   const fileChangeProvider = new FileChangeProvider();
-  // --- FIX: Instantiate content provider and pass it to the input view ---
   const fileChangeContentProvider = new FileChangeContentProvider(fileChangeProvider);
   
   context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider(scheme, fileChangeContentProvider));

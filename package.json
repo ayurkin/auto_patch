@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "publisher": "sample",
   "engines": { "vscode": "^1.75.0" },
-  "activationEvents": ["onCommand:llm-patcher.applyFromClipboard"],
+  "activationEvents": ["onView:llm-patcher-input-view"],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -51,8 +51,13 @@
     "views": {
       "llm-patcher": [
         {
-          "id": "llm-patcher-view",
-          "name": "LLM Patcher"
+          "id": "llm-patcher-input-view",
+          "name": "Input",
+          "type": "webview"
+        },
+        {
+          "id": "llm-patcher-changes-view",
+          "name": "Changes"
         }
       ]
     },
@@ -60,24 +65,24 @@
       "view/title": [
         {
           "command": "llm-patcher.applyAll",
-          "when": "view == llm-patcher-view",
+          "when": "view == llm-patcher-changes-view && workspaceFolders",
           "group": "navigation@1"
         },
         {
           "command": "llm-patcher.discardAll",
-          "when": "view == llm-patcher-view",
+          "when": "view == llm-patcher-changes-view",
           "group": "navigation@2"
         }
       ],
       "view/item/context": [
         {
           "command": "llm-patcher.previewChange",
-          "when": "viewItem == fileChange",
+          "when": "viewItem == fileChange && workspaceFolders",
           "group": "inline"
         },
         {
           "command": "llm-patcher.applyChange",
-          "when": "viewItem == fileChange",
+          "when": "viewItem == fileChange && workspaceFolders",
           "group": "inline"
         },
         {

@@ -9,14 +9,7 @@ export interface FileChange {
 
 export function parseLLMResponse(text: string): FileChange[] {
   const results: FileChange[] = [];
-  // FIX 1: Anchor the pattern to the start of a line and use the multiline flag 'm'.
-  // This prevents the parser from matching the pattern inside code comments or strings.
   const fileMarkerPattern = /^<!-- FILE: (.*?) -->/gm;
-
-  // FIX 2: Make the content-capturing group greedy (*) and require newlines around it.
-  // This ensures it captures the entire content of a code block, even if the
-  // content itself contains code block fences (e.g., in a Markdown file).
-  const codeBlockPattern = /```(?:[a-z]+)?\s*\n([\s\S]*)\n```/;
 
   const markers = [];
   let match;
@@ -33,12 +26,28 @@ export function parseLLMResponse(text: string): FileChange[] {
     const end = i + 1 < markers.length ? markers[i + 1].startIndex : text.length;
     const contentSlice = text.substring(start, end);
 
-    const codeMatch = contentSlice.match(codeBlockPattern);
-    if (codeMatch) {
-      results.push({
-        filePath: markers[i].filePath,
-        newContent: codeMatch[1],
-      });
+    // --- NEW ROBUST PARSING LOGIC ---
+    // Instead of a single regex, we use string manipulation based on the boundaries
+    // defined by the file markers, which is more reliable.
+
+    const codeBlockStartIndex = contentSlice.indexOf('```');
+    const codeBlockEndIndex = contentSlice.lastIndexOf('```');
+
+    if (codeBlockStartIndex !== -1 && codeBlockEndIndex > codeBlockStartIndex) {
+      // Extract the content including the language identifier line
+      const rawBlockContent = contentSlice.substring(codeBlockStartIndex + 3, codeBlockEndIndex);
+      
+      // Find the first newline to remove the language identifier (e.g., "typescript\n")
+      const firstNewlineIndex = rawBlockContent.indexOf('\n');
+      
+      if (firstNewlineIndex !== -1) {
+        // The final content is everything after the first line
+        const newContent = rawBlockContent.substring(firstNewlineIndex + 1);
+        results.push({
+          filePath: markers[i].filePath,
+          newContent: newContent,
+        });
+      }
     }
   }
 
@@ -154,6 +163,12 @@ class InputViewProvider implements vscode.WebviewViewProvider {
     private readonly _changeProvider: FileChangeProvider
   ) {}
 
+  public clearInput() {
+    this._changeProvider.clear();
+    this._context.workspaceState.update('llm-patcher.lastInput', '');
+    this._view?.webview.postMessage({ command: 'restoreState', text: '' });
+  }
+
   public resolveWebviewView(webviewView: vscode.WebviewView) {
     this._view = webviewView;
 
@@ -176,9 +191,7 @@ class InputViewProvider implements vscode.WebviewViewProvider {
           this._context.workspaceState.update('llm-patcher.lastInput', message.text);
           return;
         case 'clear':
-          this._changeProvider.clear();
-          this._context.workspaceState.update('llm-patcher.lastInput', '');
-          this._view?.webview.postMessage({ command: 'restoreState', text: '' });
+          this.clearInput();
           return;
       }
     });
@@ -198,7 +211,7 @@ class InputViewProvider implements vscode.WebviewViewProvider {
     }
     const parsed = parseLLMResponse(text);
     const normalized = normalizeChanges(parsed);
-    if (normalized.length === 0) {
+    if (normalized.length === 0 && text.trim().length > 0) {
       vscode.window.showInformationMessage('LLM Patcher: No valid file changes found in input.');
     }
     this._changeProvider.setChanges(normalized);
@@ -235,6 +248,15 @@ class InputViewProvider implements vscode.WebviewViewProvider {
             vscode.postMessage({ command: 'saveState', text: textarea.value });
           });
 
+          textarea.addEventListener('paste', () => {
+            // Use a timeout to allow the pasted content to be inserted into the textarea
+            setTimeout(() => {
+                const text = textarea.value;
+                vscode.postMessage({ command: 'saveState', text: text });
+                vscode.postMessage({ command: 'previewChanges', text: text });
+            }, 0);
+          });
+
           document.getElementById('preview-button').addEventListener('click', () => {
             vscode.postMessage({ command: 'previewChanges', text: textarea.value });
           });
@@ -264,7 +286,7 @@ async function applySingleChange(change: FileChange): Promise<vscode.Uri> {
     const root = vscode.workspace.workspaceFolders[0].uri;
     const fileUri = vscode.Uri.joinPath(root, change.filePath);
 
-    const parentUri = vscode.Uri.file(path.dirname(fileUri.fsPath));
+    const parentUri = vscode.Uri.joinPath(fileUri, '..');
     await vscode.workspace.fs.createDirectory(parentUri);
 
     await vscode.workspace.fs.writeFile(fileUri, Buffer.from(change.newContent, 'utf8'));
@@ -376,7 +398,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('llm-patcher.discardAll', () => {
-      fileChangeProvider.clear();
+      inputViewProvider.clearInput();
     })
   );
 }

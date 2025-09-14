@@ -34,11 +34,17 @@ export function registerCommands(
       if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) { return; }
       const root = vscode.workspace.workspaceFolders[0].uri;
       const fileUri = vscode.Uri.joinPath(root, item.change.filePath);
+
+      // Construct a URI with our custom scheme for the preview content.
+      // Uri.parse correctly encodes the path segment.
       const previewUri = vscode.Uri.parse(`${scheme}:/${item.change.filePath}`);
+      
       try {
         await vscode.workspace.fs.stat(fileUri);
+        // If the file exists, show a diff view.
         await vscode.commands.executeCommand('vscode.diff', fileUri, previewUri, `${item.change.filePath} (Preview)`);
       } catch {
+        // If the file does not exist, show the preview content directly.
         await vscode.window.showTextDocument(previewUri, { preview: true });
       }
     })

@@ -42,11 +42,9 @@ export function parseLLMResponse(text: string): FileChange[] {
 
   let match;
   while ((match = pattern.exec(text)) !== null) {
-    // The non-greedy capture might include a final newline before the closing fence.
-    // We remove it to get the clean content.
-    const rawContent = match[2].replace(/\r?\n$/, '');
-    
-    // Clean up indentation artifacts and normalize line endings.
+    // match[2] contains the raw content from between the code fences.
+    // This is passed to cleanupContent which handles normalization, dedenting, and trimming.
+    const rawContent = match[2];
     const cleanedContent = cleanupContent(rawContent);
 
     results.push({

@@ -77,11 +77,15 @@ export class FileChangeContentProvider implements vscode.TextDocumentContentProv
   }
 
   provideTextDocumentContent(uri: vscode.Uri): string {
-    const path = uri.path.startsWith('/') ? uri.path.substring(1) : uri.path;
-    const change = this.provider.getChanges().find(c => c.filePath === path);
+    // The path from a URI is URL-encoded (e.g., spaces become %20). We must decode it
+    // to correctly match against the file path string.
+    const requestedPath = decodeURIComponent(uri.path.startsWith('/') ? uri.path.substring(1) : uri.path);
+    const change = this.provider.getChanges().find(c => c.filePath === requestedPath);
+    
     if (change) {
         return change.newContent;
     }
-    return `// Change for "${path}" is no longer available.\n// It may have been applied or discarded.`;
+    
+    return `// Change for "${requestedPath}" is no longer available.\n// It may have been applied or discarded.`;
   }
 }

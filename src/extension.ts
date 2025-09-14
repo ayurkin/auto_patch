@@ -3,10 +3,6 @@ import { FileChangeProvider, FileChangeContentProvider } from './providers';
 import { InputViewProvider } from './webview';
 import { registerCommands } from './commands';
 
-// Re-export parseLLMResponse for backward compatibility with tests
-export { parseLLMResponse } from './parser';
-export { FileChange } from './types';
-
 export function activate(context: vscode.ExtensionContext) {
   vscode.commands.executeCommand('setContext', 'auto-patch.hasChanges', false);
 

@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { parseLLMResponse } from '../../extension';
+import { parseLLMResponse } from '../../parser';
 
 suite('parseLLMResponse Suite with START/END format', () => {
   test('should parse a single file change correctly', () => {

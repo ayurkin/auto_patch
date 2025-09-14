@@ -19,7 +19,7 @@ There are two main workflows to apply changes.
 
 1.  Copy the full response from your LLM, including the special `<!-- FILE_START: ... -->` and `<!-- FILE_END: ... -->` markers and code blocks.
 2.  Click the **Auto Patch** icon in the VS Code Activity Bar.
-3.  In the **Input** view's title bar (top right), click the **Paste from Clipboard and Preview** (📋) icon.
+3.  In the **Input** view's title bar (top right), click the **Paste from Clipboard and Preview** (`$(clippy)`) icon.
 4.  The LLM response will be parsed, and the proposed file changes will automatically appear in the **Changes** view below.
 
 ### Workflow 2: Manual Paste
@@ -33,10 +33,10 @@ There are two main workflows to apply changes.
 
 Once the files are listed in the **Changes** view:
 *   **Single-click** a file to see a diff preview comparing the current file with the proposed changes.
-*   **Apply a single file:** Hover over the file name and click the **Apply Change** (✓) icon.
-*   **Discard a single file:** Hover over the file name and click the **Discard Change** (✗) icon.
-*   **Apply all files:** Use the **Apply All Changes** (✓✓) button in the title bar of the **Changes** view.
-*   **Discard all files:** Use the **Discard All Changes** (🗑️) button, also in the **Changes** view title bar.
+*   **Apply a single file:** Hover over the file name and click the **Apply Change** (`$(check)`) icon.
+*   **Discard a single file:** Hover over the file name and click the **Discard Change** (`$(x)`) icon.
+*   **Apply all files:** Use the **Apply All Changes** (`$(check-all)`) icon in the title bar of the **Changes** view.
+*   **Discard all files:** Use the **Discard All Changes** (`$(trash)`) icon, also in the **Changes** view title bar.
 
 ## Example LLM Response Format
 

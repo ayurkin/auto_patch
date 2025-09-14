@@ -80,7 +80,15 @@ export class FileChangeContentProvider implements vscode.TextDocumentContentProv
     // The path from a URI is URL-encoded (e.g., spaces become %20). We must decode it
     // to correctly match against the file path string.
     const requestedPath = decodeURIComponent(uri.path.startsWith('/') ? uri.path.substring(1) : uri.path);
-    const change = this.provider.getChanges().find(c => c.filePath === requestedPath);
+    
+    const isCaseInsensitive = process.platform === 'win32' || process.platform === 'darwin';
+
+    const change = this.provider.getChanges().find(c => {
+      if (isCaseInsensitive) {
+        return c.filePath.toLowerCase() === requestedPath.toLowerCase();
+      }
+      return c.filePath === requestedPath;
+    });
     
     if (change) {
         return change.newContent;

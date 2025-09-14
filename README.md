@@ -17,7 +17,7 @@ There are two main workflows to apply changes.
 
 ### Workflow 1: Paste from Clipboard (Recommended)
 
-1.  Copy the full response from your LLM, including the special `<!-- FILE: ... -->` comments and code blocks.
+1.  Copy the full response from your LLM, including the special `<!-- FILE_START: ... -->` and `<!-- FILE_END: ... -->` markers and code blocks.
 2.  Click the **Auto Patch** icon in the VS Code Activity Bar.
 3.  In the **Input** view's title bar (top right), click the **Paste from Clipboard and Preview** (📋) icon.
 4.  The LLM response will be parsed, and the proposed file changes will automatically appear in the **Changes** view below.
@@ -40,13 +40,15 @@ Once the files are listed in the **Changes** view:
 
 ## Example LLM Response Format
 
-The extension parses text that contains special comments to identify file paths, followed by markdown code blocks. Here is an example of a valid response you can copy from an LLM:
+The extension parses text that contains special markers to identify file paths and content. Each file block must start with `<!-- FILE_START: path/to/file.ext -->` and end with `<!-- FILE_END: path/to/file.ext -->`. The file path in the start and end markers must match exactly.
+
+Here is an example of a valid response you can copy from an LLM:
 
 > I've identified two files that need changes to implement the feature.
 >
 > First, we need to update the main application file to register the new service.
 >
-> <!-- FILE: src/app.ts -->
+> <!-- FILE_START: src/app.ts -->
 > ```typescript
 > import { OldService } from './old-service';
 > import { NewService } from './new-service';
@@ -59,10 +61,11 @@ The extension parses text that contains special comments to identify file paths,
 >
 > main();
 > ```
+> <!-- FILE_END: src/app.ts -->
 >
 > Next, here is the implementation of the new service itself. This is a new file.
 >
-> <!-- FILE: src/new-service.ts -->
+> <!-- FILE_START: src/new-service.ts -->
 > ```typescript
 > export class NewService {
 >   run() {
@@ -70,6 +73,7 @@ The extension parses text that contains special comments to identify file paths,
 >   }
 > }
 > ```
+> <!-- FILE_END: src/new-service.ts -->
 >
 > These changes should accomplish the task. Let me know if you have any other questions!
 

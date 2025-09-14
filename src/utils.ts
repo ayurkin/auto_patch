@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as os from 'os';
+import * as path from 'path';
 import { FileChange } from './types';
 
 export function getNonce() {
@@ -33,6 +34,15 @@ export async function applySingleChange(change: FileChange): Promise<vscode.Uri>
     const root = vscode.workspace.workspaceFolders[0].uri;
     const fileUri = vscode.Uri.joinPath(root, change.filePath);
 
+    // Security: Ensure the file path is within the workspace folder to prevent path traversal attacks.
+    const rootPath = root.fsPath;
+    const filePath = fileUri.fsPath;
+    const relativePath = path.relative(rootPath, filePath);
+
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+        throw new Error(`Path traversal detected. Attempted to write to "${change.filePath}", which is outside the workspace.`);
+    }
+
     const parentUri = vscode.Uri.joinPath(fileUri, '..');
     await vscode.workspace.fs.createDirectory(parentUri);
 
@@ -40,4 +50,3 @@ export async function applySingleChange(change: FileChange): Promise<vscode.Uri>
     
     return fileUri;
 }
-

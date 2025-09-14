@@ -98,8 +98,11 @@ export function registerCommands(
 
   context.subscriptions.push(
     vscode.commands.registerCommand('llm-patcher.discardAll', () => {
-      inputViewProvider.clearInput();
+      if (fileChangeProvider.getChanges().length === 0) {
+        vscode.window.showInformationMessage('No changes to discard.');
+        return;
+      }
+      inputViewProvider.discardChanges();
     })
   );
 }
-

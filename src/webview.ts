@@ -13,12 +13,26 @@ export class InputViewProvider implements vscode.WebviewViewProvider {
     private readonly _scheme: string
   ) {}
 
-  public clearInput() {
+  /**
+   * Discards all pending changes from the tree view and updates any open diff views.
+   * This does not clear the input text area.
+   */
+  public discardChanges() {
     const oldChanges = this._changeProvider.getChanges();
-    this._changeProvider.clear();
+    if (oldChanges.length > 0) {
+      this._changeProvider.clear();
+      // Notify the content provider that the virtual documents for the old changes are now invalid.
+      this._contentProvider.notifyChanges(this._scheme, oldChanges);
+    }
+  }
+
+  /**
+   * Clears the input text area and discards all pending changes.
+   */
+  public clearInput() {
+    this.discardChanges();
     this._context.workspaceState.update('llm-patcher.lastInput', '');
     this._view?.webview.postMessage({ command: 'restoreState', text: '' });
-    this._contentProvider.notifyChanges(this._scheme, oldChanges);
   }
 
   public resolveWebviewView(webviewView: vscode.WebviewView) {
@@ -138,4 +152,3 @@ export class InputViewProvider implements vscode.WebviewViewProvider {
     `;
   }
 }
-

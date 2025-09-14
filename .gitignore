@@ -2,6 +2,7 @@ out
 node_modules
 *.vsix
 .DS_Store
+.vscode-test/
 
 # Ignore VS Code workspace settings, but not the recommended ones
 .vscode/*

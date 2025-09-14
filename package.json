@@ -125,7 +125,7 @@
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "format": "prettier --write \"src/**/*.ts\"",
-    "test": "echo \"No tests yet\""
+    "test": "node ./out/test/runTest.js"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",
@@ -135,6 +135,11 @@
     "@typescript-eslint/parser": "^5.62.0",
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^9.1.0",
-    "prettier": "^3.2.5"
+    "prettier": "^3.2.5",
+    "@vscode/test-electron": "^2.3.9",
+    "@types/mocha": "^10.0.6",
+    "mocha": "^10.3.0",
+    "glob": "^10.3.10",
+    "@types/glob": "^8.1.0"
   }
 }

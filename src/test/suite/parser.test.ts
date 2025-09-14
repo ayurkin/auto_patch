@@ -68,7 +68,7 @@ suite('parseLLMResponse Suite with START/END format', () => {
       'line2\r\n' +
       '```\r\n' +
       '<!-- FILE_END: crlf.txt -->';
-    const expected = [{ filePath: 'crlf.txt', newContent: 'line1\r\nline2' }];
+    const expected = [{ filePath: 'crlf.txt', newContent: 'line1\nline2' }];
     assert.deepStrictEqual(parseLLMResponse(input), expected);
   });
 

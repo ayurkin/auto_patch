@@ -1,35 +1,32 @@
 import { FileChange } from './types';
 
 /**
- * Cleans up common indentation issues from content extracted from markdown,
- * which can be an artifact of how template literals are formatted in tests.
- * It finds the common minimum indentation across all non-empty lines and removes it.
+ * Cleans up common indentation issues and normalizes line endings from content
+ * extracted from markdown. It finds the common minimum indentation across all
+ * non-empty lines and removes it. All line endings are normalized to LF ('\n').
  * @param text The raw extracted text content.
- * @returns Text with common leading whitespace removed from all lines and trimmed.
+ * @returns Text with common leading whitespace removed, line endings normalized, and trimmed.
  */
 function cleanupContent(text: string): string {
-    const lines = text.split('\n');
-    if (lines.length === 0) {
-        return text;
-    }
+    const lines = text.split(/\r?\n/);
 
     // Find minimum indentation of non-empty lines
     const nonEmptyLines = lines.filter(line => line.trim() !== '');
     if (nonEmptyLines.length === 0) {
-        return text.trim();
+        return ''; // Content is empty or only whitespace
     }
 
     const minIndent = nonEmptyLines
         .map(line => line.match(/^\s*/)![0].length)
         .reduce((min, len) => Math.min(min, len), Infinity);
 
-    if (minIndent === Infinity || minIndent === 0) {
-        return text.trim();
+    let dedentedLines = lines;
+    // Only dedent if there is a common indentation greater than 0
+    if (minIndent > 0 && minIndent !== Infinity) {
+        dedentedLines = lines.map(line => line.substring(minIndent));
     }
-
-    // Remove the common indentation from all lines
-    const dedentedLines = lines.map(line => line.substring(minIndent));
     
+    // Re-join with LF ('\n') to normalize line endings, then trim the whole block.
     return dedentedLines.join('\n').trim();
 }
 
@@ -49,7 +46,7 @@ export function parseLLMResponse(text: string): FileChange[] {
     // We remove it to get the clean content.
     const rawContent = match[2].replace(/\r?\n$/, '');
     
-    // Clean up indentation artifacts that are common in test strings or LLM outputs.
+    // Clean up indentation artifacts and normalize line endings.
     const cleanedContent = cleanupContent(rawContent);
 
     results.push({
@@ -60,4 +57,3 @@ export function parseLLMResponse(text: string): FileChange[] {
 
   return results;
 }
-

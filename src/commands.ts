@@ -3,6 +3,20 @@ import { FileChangeProvider, FileChangeItem } from './providers';
 import { InputViewProvider } from './webview';
 import { applySingleChange } from './utils';
 
+/**
+ * Helper to ensure commands are run on valid tree items from the "Changes" view.
+ * @param item The item passed to the command.
+ * @param commandTitle The user-facing name of the command for error messages.
+ * @returns True if the item is a valid FileChangeItem, otherwise false.
+ */
+const ensureFileChangeItem = (item: any, commandTitle: string): item is FileChangeItem => {
+  if (item instanceof FileChangeItem && item.change) {
+    return true;
+  }
+  vscode.window.showWarningMessage(`'${commandTitle}' must be run on an item in the 'Changes' view.`);
+  return false;
+};
+
 export function registerCommands(
   context: vscode.ExtensionContext,
   fileChangeProvider: FileChangeProvider,
@@ -10,13 +24,13 @@ export function registerCommands(
   scheme: string
 ): void {
   context.subscriptions.push(
-    vscode.commands.registerCommand('llm-patcher.applyFromClipboard', async () => {
+    vscode.commands.registerCommand('auto-patch.applyFromClipboard', async () => {
       await inputViewProvider.pasteAndPreview();
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('llm-patcher.previewChange', async (item: FileChangeItem) => {
+    vscode.commands.registerCommand('auto-patch.previewChange', async (item: FileChangeItem) => {
       if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) { return; }
       const root = vscode.workspace.workspaceFolders[0].uri;
       const fileUri = vscode.Uri.joinPath(root, item.change.filePath);
@@ -31,9 +45,8 @@ export function registerCommands(
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('llm-patcher.applyChange', async (item: FileChangeItem) => {
-      if (!item || !item.change) {
-        vscode.window.showErrorMessage('Invalid item selected for applying change.');
+    vscode.commands.registerCommand('auto-patch.applyChange', async (item: FileChangeItem) => {
+      if (!ensureFileChangeItem(item, 'Apply Change')) {
         return;
       }
       try {
@@ -48,13 +61,16 @@ export function registerCommands(
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('llm-patcher.discardChange', (item: FileChangeItem) => {
+    vscode.commands.registerCommand('auto-patch.discardChange', (item: FileChangeItem) => {
+      if (!ensureFileChangeItem(item, 'Discard Change')) {
+        return;
+      }
       fileChangeProvider.removeChange(item.change);
     })
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('llm-patcher.applyAll', async () => {
+    vscode.commands.registerCommand('auto-patch.applyAll', async () => {
       const changes = [...fileChangeProvider.getChanges()];
       if (changes.length === 0) {
         vscode.window.showInformationMessage('No changes to apply.');
@@ -97,7 +113,7 @@ export function registerCommands(
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('llm-patcher.discardAll', () => {
+    vscode.commands.registerCommand('auto-patch.discardAll', () => {
       if (fileChangeProvider.getChanges().length === 0) {
         vscode.window.showInformationMessage('No changes to discard.');
         return;

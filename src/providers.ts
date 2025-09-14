@@ -6,7 +6,7 @@ export class FileChangeItem extends vscode.TreeItem {
     super(change.filePath, vscode.TreeItemCollapsibleState.None);
     this.contextValue = 'fileChange';
     this.command = {
-      command: 'llm-patcher.previewChange',
+      command: 'auto-patch.previewChange',
       title: 'Preview Changes',
       arguments: [this],
     };
@@ -19,7 +19,7 @@ export class FileChangeProvider implements vscode.TreeDataProvider<FileChangeIte
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   private _updateContext(): void {
-    vscode.commands.executeCommand('setContext', 'llm-patcher.hasChanges', this._changes.length > 0);
+    vscode.commands.executeCommand('setContext', 'auto-patch.hasChanges', this._changes.length > 0);
   }
 
   setChanges(changes: FileChange[]): void {
@@ -85,4 +85,3 @@ export class FileChangeContentProvider implements vscode.TextDocumentContentProv
     return `// Change for "${path}" is no longer available.\n// It may have been applied or discarded.`;
   }
 }
-

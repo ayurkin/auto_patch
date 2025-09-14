@@ -31,7 +31,7 @@ export class InputViewProvider implements vscode.WebviewViewProvider {
    */
   public clearInput() {
     this.discardChanges();
-    this._context.workspaceState.update('llm-patcher.lastInput', '');
+    this._context.workspaceState.update('auto-patch.lastInput', '');
     this._view?.webview.postMessage({ command: 'restoreState', text: '' });
   }
 
@@ -45,7 +45,7 @@ export class InputViewProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
-    const lastState = this._context.workspaceState.get('llm-patcher.lastInput', '');
+    const lastState = this._context.workspaceState.get('auto-patch.lastInput', '');
     webviewView.webview.postMessage({ command: 'restoreState', text: lastState });
 
     webviewView.webview.onDidReceiveMessage(message => {
@@ -54,7 +54,7 @@ export class InputViewProvider implements vscode.WebviewViewProvider {
           this._runPreview(message.text);
           return;
         case 'saveState':
-          this._context.workspaceState.update('llm-patcher.lastInput', message.text);
+          this._context.workspaceState.update('auto-patch.lastInput', message.text);
           return;
         case 'clear':
           this.clearInput();
@@ -66,20 +66,20 @@ export class InputViewProvider implements vscode.WebviewViewProvider {
   public async pasteAndPreview() {
     const text = await vscode.env.clipboard.readText();
     this._view?.webview.postMessage({ command: 'restoreState', text });
-    this._context.workspaceState.update('llm-patcher.lastInput', text);
+    this._context.workspaceState.update('auto-patch.lastInput', text);
     this._runPreview(text);
   }
 
   private _runPreview(text: string) {
     if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
-      vscode.window.showErrorMessage('LLM Patcher: Please open a folder in the workspace.');
+      vscode.window.showErrorMessage('Auto Patch: Please open a folder in the workspace.');
       return;
     }
     const oldChanges = this._changeProvider.getChanges();
     const parsed = parseLLMResponse(text);
     const normalized = normalizeChanges(parsed);
     if (normalized.length === 0 && text.trim().length > 0) {
-      vscode.window.showInformationMessage('LLM Patcher: No valid file changes found in input.');
+      vscode.window.showInformationMessage('Auto Patch: No valid file changes found in input.');
     }
     this._changeProvider.setChanges(normalized);
 
@@ -91,7 +91,7 @@ export class InputViewProvider implements vscode.WebviewViewProvider {
     this._contentProvider.notifyChanges(this._scheme, uniqueChanges);
 
     if (normalized.length > 0) {
-      vscode.commands.executeCommand('llm-patcher-changes-view.focus');
+      vscode.commands.executeCommand('auto-patch-changes-view.focus');
     }
   }
 
@@ -107,7 +107,7 @@ export class InputViewProvider implements vscode.WebviewViewProvider {
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <link href="${stylesUri}" rel="stylesheet">
-        <title>LLM Patcher Input</title>
+        <title>Auto Patch Input</title>
       </head>
       <body>
         <textarea id="llm-response" placeholder="Paste LLM response here..."></textarea>
@@ -118,21 +118,36 @@ export class InputViewProvider implements vscode.WebviewViewProvider {
         <script nonce="${nonce}">
           const vscode = acquireVsCodeApi();
           const textarea = document.getElementById('llm-response');
+          let debounceTimeout;
 
+          // Function to trigger a preview
+          const runPreview = (text) => {
+            vscode.postMessage({ command: 'saveState', text: text });
+            vscode.postMessage({ command: 'previewChanges', text: text });
+          };
+
+          // Listen for typing and trigger a debounced preview
           textarea.addEventListener('input', () => {
-            vscode.postMessage({ command: 'saveState', text: textarea.value });
+            const text = textarea.value;
+            vscode.postMessage({ command: 'saveState', text: text }); // Save state immediately on input
+            
+            clearTimeout(debounceTimeout);
+            debounceTimeout = setTimeout(() => {
+              vscode.postMessage({ command: 'previewChanges', text: text });
+            }, 500); // 500ms debounce delay
           });
 
+          // Listen for paste and trigger an immediate preview
           textarea.addEventListener('paste', () => {
+            clearTimeout(debounceTimeout); // Cancel any pending debounced preview
             setTimeout(() => {
-                const text = textarea.value;
-                vscode.postMessage({ command: 'saveState', text: text });
-                vscode.postMessage({ command: 'previewChanges', text: text });
-            }, 0);
+              runPreview(textarea.value);
+            }, 0); // Use setTimeout to allow paste to complete
           });
 
           document.getElementById('preview-button').addEventListener('click', () => {
-            vscode.postMessage({ command: 'previewChanges', text: textarea.value });
+            clearTimeout(debounceTimeout);
+            runPreview(textarea.value);
           });
 
           document.getElementById('clear-button').addEventListener('click', () => {

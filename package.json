@@ -1,5 +1,5 @@
 {
-  "name": "llm-patch-applicator",
+  "name": "auto-patch",
   "displayName": "Auto Patch",
   "description": "Apply code changes from an LLM response directly from clipboard.",
   "version": "0.1.3",
@@ -28,61 +28,61 @@
     "auto"
   ],
   "activationEvents": [
-    "onView:llm-patcher-input-view",
-    "onCommand:llm-patcher.applyFromClipboard"
+    "onView:auto-patch-input-view",
+    "onCommand:auto-patch.applyFromClipboard"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "llm-patcher.applyFromClipboard",
+        "command": "auto-patch.applyFromClipboard",
         "title": "Paste from Clipboard and Preview",
         "icon": "$(clippy)"
       },
       {
-        "command": "llm-patcher.previewChange",
-        "title": "LLM Patcher: Preview Changes",
+        "command": "auto-patch.previewChange",
+        "title": "Auto Patch: Preview Changes",
         "icon": "$(eye)"
       },
       {
-        "command": "llm-patcher.applyChange",
-        "title": "LLM Patcher: Apply Change",
+        "command": "auto-patch.applyChange",
+        "title": "Auto Patch: Apply Change",
         "icon": "$(check)"
       },
       {
-        "command": "llm-patcher.discardChange",
-        "title": "LLM Patcher: Discard Change",
+        "command": "auto-patch.discardChange",
+        "title": "Auto Patch: Discard Change",
         "icon": "$(x)"
       },
       {
-        "command": "llm-patcher.applyAll",
-        "title": "LLM Patcher: Apply All Changes",
+        "command": "auto-patch.applyAll",
+        "title": "Auto Patch: Apply All Changes",
         "icon": "$(check-all)"
       },
       {
-        "command": "llm-patcher.discardAll",
-        "title": "LLM Patcher: Discard All Changes",
+        "command": "auto-patch.discardAll",
+        "title": "Auto Patch: Discard All Changes",
         "icon": "$(trash)"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "llm-patcher",
+          "id": "auto-patch",
           "title": "Auto Patch",
           "icon": "resources/icon.png"
         }
       ]
     },
     "views": {
-      "llm-patcher": [
+      "auto-patch": [
         {
-          "id": "llm-patcher-input-view",
+          "id": "auto-patch-input-view",
           "name": "Input",
           "type": "webview"
         },
         {
-          "id": "llm-patcher-changes-view",
+          "id": "auto-patch-changes-view",
           "name": "Changes"
         }
       ]
@@ -90,29 +90,29 @@
     "menus": {
       "view/title": [
         {
-          "command": "llm-patcher.applyFromClipboard",
-          "when": "view == llm-patcher-input-view",
+          "command": "auto-patch.applyFromClipboard",
+          "when": "view == auto-patch-input-view",
           "group": "navigation"
         },
         {
-          "command": "llm-patcher.applyAll",
-          "when": "view == llm-patcher-changes-view && llm-patcher.hasChanges",
+          "command": "auto-patch.applyAll",
+          "when": "view == auto-patch-changes-view && auto-patch.hasChanges",
           "group": "navigation@1"
         },
         {
-          "command": "llm-patcher.discardAll",
-          "when": "view == llm-patcher-changes-view && llm-patcher.hasChanges",
+          "command": "auto-patch.discardAll",
+          "when": "view == auto-patch-changes-view && auto-patch.hasChanges",
           "group": "navigation@2"
         }
       ],
       "view/item/context": [
         {
-          "command": "llm-patcher.applyChange",
+          "command": "auto-patch.applyChange",
           "when": "viewItem == fileChange",
           "group": "inline"
         },
         {
-          "command": "llm-patcher.discardChange",
+          "command": "auto-patch.discardChange",
           "when": "viewItem == fileChange",
           "group": "inline"
         }

@@ -21,7 +21,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // Register all commands
-  registerCommands(context, fileChangeProvider, inputViewProvider, scheme);
+  registerCommands(context, fileChangeProvider, fileChangeContentProvider, inputViewProvider, scheme);
 }
 
 export function deactivate() {}

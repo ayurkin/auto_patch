@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { FileChangeProvider, FileChangeItem } from './providers';
+import { FileChangeProvider, FileChangeItem, FileChangeContentProvider } from './providers';
 import { InputViewProvider } from './webview';
-import { applySingleChange } from './utils';
+import { applySingleChange, resolveWorkspaceFileUri, toVirtualDocumentUri } from './utils';
 
 /**
  * Helper to ensure commands are run on valid tree items from the "Changes" view.
@@ -20,6 +20,7 @@ const ensureFileChangeItem = (item: any, commandTitle: string): item is FileChan
 export function registerCommands(
   context: vscode.ExtensionContext,
   fileChangeProvider: FileChangeProvider,
+  fileChangeContentProvider: FileChangeContentProvider,
   inputViewProvider: InputViewProvider,
   scheme: string
 ): void {
@@ -31,14 +32,22 @@ export function registerCommands(
 
   context.subscriptions.push(
     vscode.commands.registerCommand('auto-patch.previewChange', async (item: FileChangeItem) => {
-      if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) { return; }
-      const root = vscode.workspace.workspaceFolders[0].uri;
-      const fileUri = vscode.Uri.joinPath(root, item.change.filePath);
+      if (!ensureFileChangeItem(item, 'Preview Changes')) {
+        return;
+      }
+
+      let fileUri: vscode.Uri;
+      try {
+        fileUri = resolveWorkspaceFileUri(item.change.filePath);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        vscode.window.showErrorMessage(`Auto Patch: ${message}`);
+        return;
+      }
 
       // Construct a URI with our custom scheme for the preview content.
-      // Uri.parse correctly encodes the path segment.
-      const previewUri = vscode.Uri.parse(`${scheme}:/${item.change.filePath}`);
-      
+      const previewUri = toVirtualDocumentUri(scheme, item.change.filePath);
+
       try {
         await vscode.workspace.fs.stat(fileUri);
         // If the file exists, show a diff view.
@@ -58,6 +67,7 @@ export function registerCommands(
       try {
         const fileUri = await applySingleChange(item.change);
         fileChangeProvider.removeChange(item.change);
+        fileChangeContentProvider.notifyChanges(scheme, [item.change]);
         await vscode.window.showTextDocument(fileUri);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -72,6 +82,7 @@ export function registerCommands(
         return;
       }
       fileChangeProvider.removeChange(item.change);
+      fileChangeContentProvider.notifyChanges(scheme, [item.change]);
     })
   );
 
@@ -83,38 +94,49 @@ export function registerCommands(
         return;
       }
 
-      await vscode.window.withProgress({
+      await vscode.window.withProgress(
+        {
           location: vscode.ProgressLocation.Notification,
-          title: "Applying LLM Changes...",
-          cancellable: false
-      }, async (progress) => {
+          title: 'Applying LLM Changes...',
+          cancellable: false,
+        },
+        async progress => {
           const total = changes.length;
           let appliedCount = 0;
           let failed = false;
+          const applied: typeof changes = [];
 
           for (const change of changes) {
-              const increment = (1 / total) * 100;
-              progress.report({ message: `Applying ${change.filePath}`, increment });
-              
-              try {
-                  await applySingleChange(change);
-                  fileChangeProvider.removeChange(change);
-                  appliedCount++;
-              } catch (error) {
-                  const message = error instanceof Error ? error.message : String(error);
-                  vscode.window.showErrorMessage(`Failed to apply change to ${change.filePath}: ${message}. Aborting remaining changes.`);
-                  failed = true;
-                  break;
-              }
+            const increment = (1 / total) * 100;
+            progress.report({ message: `Applying ${change.filePath}`, increment });
+
+            try {
+              await applySingleChange(change);
+              fileChangeProvider.removeChange(change);
+              applied.push(change);
+              appliedCount++;
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              vscode.window.showErrorMessage(
+                `Failed to apply change to ${change.filePath}: ${message}. Aborting remaining changes.`
+              );
+              failed = true;
+              break;
+            }
           }
-          
+
+          if (applied.length > 0) {
+            fileChangeContentProvider.notifyChanges(scheme, applied);
+          }
+
           if (appliedCount > 0) {
-              const message = failed 
-                ? `${appliedCount} of ${total} changes applied before an error occurred.`
-                : `${appliedCount} changes applied successfully.`;
-              vscode.window.showInformationMessage(message);
+            const message = failed
+              ? `${appliedCount} of ${total} changes applied before an error occurred.`
+              : `${appliedCount} changes applied successfully.`;
+            vscode.window.showInformationMessage(message);
           }
-      });
+        }
+      );
     })
   );
 

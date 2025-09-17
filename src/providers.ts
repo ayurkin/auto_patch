@@ -50,18 +50,25 @@ export class FileChangeProvider implements vscode.TreeDataProvider<FileChangeIte
   }
 
   async getTreeItem(element: FileChangeItem): Promise<vscode.TreeItem> {
+    let fileUri: vscode.Uri | undefined;
+    // First, resolve the workspace URI. If this fails, show a warning with the actual error.
     try {
-      const fileUri = resolveWorkspaceFileUri(element.change.filePath);
-      await vscode.workspace.fs.stat(fileUri);
+      fileUri = resolveWorkspaceFileUri(element.change.filePath);
+      element.resourceUri = fileUri; // Allow VS Code to render file icons/themes automatically.
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (message.includes('Path traversal detected')) {
-        element.iconPath = new vscode.ThemeIcon('warning');
-        element.tooltip = message;
-      } else {
-        element.iconPath = new vscode.ThemeIcon('new-file');
-        element.tooltip = 'File does not exist and will be created.';
-      }
+      element.iconPath = new vscode.ThemeIcon('warning');
+      element.tooltip = message;
+      return element;
+    }
+
+    // If the URI resolved, check if the file exists. If not, indicate it will be created.
+    try {
+      await vscode.workspace.fs.stat(fileUri);
+      element.tooltip = undefined;
+    } catch {
+      element.iconPath = new vscode.ThemeIcon('new-file');
+      element.tooltip = 'File does not exist and will be created.';
     }
     return element;
   }

@@ -11,7 +11,8 @@ export function activate(context: vscode.ExtensionContext) {
   const fileChangeContentProvider = new FileChangeContentProvider(fileChangeProvider);
   
   context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider(scheme, fileChangeContentProvider));
-  vscode.window.createTreeView('auto-patch-changes-view', { treeDataProvider: fileChangeProvider });
+  const treeView = vscode.window.createTreeView('auto-patch-changes-view', { treeDataProvider: fileChangeProvider });
+  context.subscriptions.push(treeView);
 
   const inputViewProvider = new InputViewProvider(context, fileChangeProvider, fileChangeContentProvider, scheme);
   context.subscriptions.push(

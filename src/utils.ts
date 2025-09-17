@@ -133,3 +133,4 @@ export async function applySingleChange(change: FileChange): Promise<vscode.Uri>
 
   return fileUri;
 }
+

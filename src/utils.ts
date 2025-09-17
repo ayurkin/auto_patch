@@ -1,7 +1,16 @@
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
 import * as os from 'os';
 import * as path from 'path';
 import { FileChange } from './types';
+
+function tryGetVscode(): typeof import('vscode') | undefined {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require('vscode');
+  } catch {
+    return undefined;
+  }
+}
 
 export function getNonce() {
   let text = '';
@@ -38,11 +47,25 @@ export function toVirtualDocumentUri(scheme: string, filePath: string): vscode.U
     .map(segment => encodeURIComponent(segment));
 
   const encodedPath = segments.length > 0 ? `/${segments.join('/')}` : '/';
-  return vscode.Uri.parse(`${scheme}:${encodedPath}`);
+  const vs = tryGetVscode();
+  if (vs) {
+    return vs.Uri.parse(`${scheme}:${encodedPath}`);
+  }
+  const uriStr = `${scheme}:${encodedPath}`;
+  const fallback = {
+    scheme,
+    path: encodedPath,
+    toString: () => uriStr,
+  } as unknown as vscode.Uri;
+  return fallback;
 }
 
 export function normalizeChanges(changes: FileChange[]): FileChange[] {
-  let eol = vscode.workspace.getConfiguration('files').get('eol', 'auto');
+  const vs = tryGetVscode();
+  let eol: string | 'auto' = 'auto';
+  if (vs) {
+    eol = vs.workspace.getConfiguration('files').get('eol', 'auto');
+  }
   if (eol === 'auto') {
     eol = os.EOL;
   }
@@ -66,7 +89,8 @@ export function normalizeChanges(changes: FileChange[]): FileChange[] {
 }
 
 export function resolveWorkspaceFileUri(filePath: string): vscode.Uri {
-  if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
+  const vs = tryGetVscode();
+  if (!vs || !vs.workspace.workspaceFolders || vs.workspace.workspaceFolders.length === 0) {
     throw new Error('No workspace folder is open. Please open a folder to apply changes.');
   }
 
@@ -75,13 +99,13 @@ export function resolveWorkspaceFileUri(filePath: string): vscode.Uri {
     throw new Error(`Invalid file path "${filePath}".`);
   }
 
-  const root = vscode.workspace.workspaceFolders[0].uri;
+  const root = vs.workspace.workspaceFolders[0].uri;
   const pathSegments = sanitizedPath.split('/').filter(segment => segment.length > 0);
   if (pathSegments.length === 0) {
     throw new Error(`Invalid file path "${filePath}".`);
   }
 
-  const fileUri = vscode.Uri.joinPath(root, ...pathSegments);
+  const fileUri = vs.Uri.joinPath(root, ...pathSegments);
 
   // Security: Ensure the file path is within the workspace folder to prevent path traversal attacks.
   const rootPath = root.fsPath;
@@ -96,12 +120,16 @@ export function resolveWorkspaceFileUri(filePath: string): vscode.Uri {
 }
 
 export async function applySingleChange(change: FileChange): Promise<vscode.Uri> {
+  const vs = tryGetVscode();
+  if (!vs) {
+    throw new Error('VS Code API is not available.');
+  }
   const fileUri = resolveWorkspaceFileUri(change.filePath);
 
-  const parentUri = vscode.Uri.joinPath(fileUri, '..');
-  await vscode.workspace.fs.createDirectory(parentUri);
+  const parentUri = vs.Uri.joinPath(fileUri, '..');
+  await vs.workspace.fs.createDirectory(parentUri);
 
-  await vscode.workspace.fs.writeFile(fileUri, Buffer.from(change.newContent, 'utf8'));
+  await vs.workspace.fs.writeFile(fileUri, Buffer.from(change.newContent, 'utf8'));
 
   return fileUri;
 }

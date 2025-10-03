@@ -1,5 +1,6 @@
 import * as assert from 'assert';
-import { sanitizeFilePath, toVirtualDocumentUri } from '../../utils';
+import * as os from 'os';
+import { normalizeChanges, sanitizeFilePath, toVirtualDocumentUri } from '../../utils';
 
 suite('utils helpers', () => {
   test('sanitizeFilePath normalizes slashes and trims whitespace', () => {
@@ -30,5 +31,26 @@ suite('utils helpers', () => {
     const uri = toVirtualDocumentUri('auto-patch', 'file.ts');
     assert.strictEqual(uri.path, '/file.ts');
     assert.strictEqual(uri.toString(), 'auto-patch:/file.ts');
+  });
+
+  test('normalizeChanges appends a trailing blank line', () => {
+    const [normalized] = normalizeChanges([
+      { filePath: 'src/file.ts', newContent: "console.log('hi');" },
+    ]);
+
+    assert.strictEqual(
+      normalized.newContent,
+      `console.log('hi');${os.EOL}${os.EOL}`,
+      'content should end with a blank line',
+    );
+  });
+
+  test('normalizeChanges preserves existing trailing blank lines', () => {
+    const contentWithBlankLine = `console.log('hi');${os.EOL}${os.EOL}`;
+    const [normalized] = normalizeChanges([
+      { filePath: 'src/file.ts', newContent: contentWithBlankLine },
+    ]);
+
+    assert.strictEqual(normalized.newContent, contentWithBlankLine);
   });
 });

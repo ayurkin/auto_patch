@@ -125,7 +125,7 @@
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "format": "prettier --write \"src/**/*.ts\"",
-    "test": "node ./out/test/runTest.js"
+    "test": "npm run build && mocha 'out/test/suite/**/*.test.js'"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",

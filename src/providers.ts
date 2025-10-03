@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { FileChange } from './types';
+import { resolveWorkspaceFileUri, toVirtualDocumentUri } from './utils';
 
 export class FileChangeItem extends vscode.TreeItem {
   constructor(public readonly change: FileChange) {
@@ -49,15 +50,25 @@ export class FileChangeProvider implements vscode.TreeDataProvider<FileChangeIte
   }
 
   async getTreeItem(element: FileChangeItem): Promise<vscode.TreeItem> {
-    if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
-      const root = vscode.workspace.workspaceFolders[0].uri;
-      const fileUri = vscode.Uri.joinPath(root, element.change.filePath);
-      try {
-        await vscode.workspace.fs.stat(fileUri);
-      } catch {
-        element.iconPath = new vscode.ThemeIcon('new-file');
-        element.tooltip = 'File does not exist and will be created.';
-      }
+    let fileUri: vscode.Uri | undefined;
+    // First, resolve the workspace URI. If this fails, show a warning with the actual error.
+    try {
+      fileUri = resolveWorkspaceFileUri(element.change.filePath);
+      element.resourceUri = fileUri; // Allow VS Code to render file icons/themes automatically.
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      element.iconPath = new vscode.ThemeIcon('warning');
+      element.tooltip = message;
+      return element;
+    }
+
+    // If the URI resolved, check if the file exists. If not, indicate it will be created.
+    try {
+      await vscode.workspace.fs.stat(fileUri);
+      element.tooltip = undefined;
+    } catch {
+      element.iconPath = new vscode.ThemeIcon('new-file');
+      element.tooltip = 'File does not exist and will be created.';
     }
     return element;
   }
@@ -70,8 +81,13 @@ export class FileChangeContentProvider implements vscode.TextDocumentContentProv
   constructor(private readonly provider: FileChangeProvider) {}
 
   public notifyChanges(scheme: string, changes: FileChange[]) {
+    const seen = new Set<string>();
     for (const change of changes) {
-      const uri = vscode.Uri.parse(`${scheme}:/${change.filePath}`);
+      if (seen.has(change.filePath)) {
+        continue;
+      }
+      seen.add(change.filePath);
+      const uri = toVirtualDocumentUri(scheme, change.filePath);
       this._onDidChange.fire(uri);
     }
   }
@@ -79,7 +95,13 @@ export class FileChangeContentProvider implements vscode.TextDocumentContentProv
   provideTextDocumentContent(uri: vscode.Uri): string {
     // The path from a URI is URL-encoded (e.g., spaces become %20). We must decode it
     // to correctly match against the file path string.
-    const requestedPath = decodeURIComponent(uri.path.startsWith('/') ? uri.path.substring(1) : uri.path);
+    const encodedPath = uri.path.startsWith('/') ? uri.path.substring(1) : uri.path;
+    let requestedPath: string;
+    try {
+      requestedPath = decodeURIComponent(encodedPath);
+    } catch {
+      requestedPath = encodedPath;
+    }
     
     const isCaseInsensitive = process.platform === 'win32' || process.platform === 'darwin';
 
@@ -91,9 +113,9 @@ export class FileChangeContentProvider implements vscode.TextDocumentContentProv
     });
     
     if (change) {
-        return change.newContent;
+      return change.newContent;
     }
-    
+
     return `// Change for "${requestedPath}" is no longer available.\n// It may have been applied or discarded.`;
   }
 }

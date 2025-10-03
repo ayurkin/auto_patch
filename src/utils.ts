@@ -82,6 +82,17 @@ export function normalizeChanges(changes: FileChange[]): FileChange[] {
       newContent = newContent.replace(/\n/g, '\r\n');
     }
 
+    const blankLine = `${eol}${eol}`;
+    if (!newContent.endsWith(blankLine)) {
+      if (newContent.endsWith(eol)) {
+        newContent += eol;
+      } else if (newContent.length === 0) {
+        newContent = blankLine;
+      } else {
+        newContent += blankLine;
+      }
+    }
+
     normalizedChanges.push({ ...change, filePath: sanitizedPath, newContent });
   }
 

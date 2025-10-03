@@ -1,4 +1,5 @@
 import type * as vscode from 'vscode';
+import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { FileChange } from './types';
@@ -77,23 +78,65 @@ export function normalizeChanges(changes: FileChange[]): FileChange[] {
       continue;
     }
 
-    let newContent = change.newContent.replace(/\r\n/g, '\n');
-    if (eol === '\r\n') {
-      newContent = newContent.replace(/\n/g, '\r\n');
-    }
+    const workspaceRoot =
+      vs?.workspace.workspaceFolders && vs.workspace.workspaceFolders.length > 0
+        ? vs.workspace.workspaceFolders[0].uri.fsPath
+        : undefined;
 
-    const blankLine = `${eol}${eol}`;
-    if (!newContent.endsWith(blankLine)) {
-      if (newContent.endsWith(eol)) {
-        newContent += eol;
-      } else if (newContent.length === 0) {
-        newContent = blankLine;
+    let existingContent: string | undefined;
+    let existingFilePath: string | undefined;
+    if (path.isAbsolute(sanitizedPath)) {
+      existingFilePath = sanitizedPath;
+    } else {
+      const baseDir = workspaceRoot ?? process.cwd();
+      const resolvedPath = path.resolve(baseDir, sanitizedPath);
+
+      if (workspaceRoot) {
+        const relativeToRoot = path.relative(workspaceRoot, resolvedPath);
+        if (!relativeToRoot.startsWith('..') && !path.isAbsolute(relativeToRoot)) {
+          existingFilePath = resolvedPath;
+        }
       } else {
-        newContent += blankLine;
+        existingFilePath = resolvedPath;
       }
     }
 
-    normalizedChanges.push({ ...change, filePath: sanitizedPath, newContent });
+    try {
+      if (existingFilePath && fs.existsSync(existingFilePath)) {
+        existingContent = fs.readFileSync(existingFilePath, 'utf8');
+      }
+    } catch {
+      existingContent = undefined;
+    }
+
+    const normalizedExisting = existingContent?.replace(/\r\n/g, '\n');
+    const existingHasTrailingBlankLine = normalizedExisting?.endsWith('\n\n') ?? undefined;
+
+    let normalizedNewContent = change.newContent.replace(/\r\n/g, '\n');
+    const newHasTrailingBlankLine = normalizedNewContent.endsWith('\n\n');
+
+    const shouldEnsureBlankLine =
+      existingHasTrailingBlankLine !== undefined ? existingHasTrailingBlankLine : true;
+
+    if (shouldEnsureBlankLine && !newHasTrailingBlankLine) {
+      if (normalizedNewContent.endsWith('\n')) {
+        normalizedNewContent += '\n';
+      } else if (normalizedNewContent.length === 0) {
+        normalizedNewContent = '\n\n';
+      } else {
+        normalizedNewContent += '\n\n';
+      }
+    }
+
+    if (eol === '\r\n') {
+      normalizedNewContent = normalizedNewContent.replace(/\n/g, '\r\n');
+    }
+
+    normalizedChanges.push({
+      ...change,
+      filePath: sanitizedPath,
+      newContent: normalizedNewContent,
+    });
   }
 
   return normalizedChanges;

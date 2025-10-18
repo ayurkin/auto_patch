@@ -1,4 +1,5 @@
 import type * as vscode from 'vscode';
+import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { FileChange } from './types';
@@ -62,12 +63,13 @@ export function toVirtualDocumentUri(scheme: string, filePath: string): vscode.U
 
 export function normalizeChanges(changes: FileChange[]): FileChange[] {
   const vs = tryGetVscode();
-  let eol: string | 'auto' = 'auto';
+  let eol: string = os.EOL;
   if (vs) {
-    eol = vs.workspace.getConfiguration('files').get('eol', 'auto');
-  }
-  if (eol === 'auto') {
-    eol = os.EOL;
+    const filesConfig = vs.workspace.getConfiguration('files');
+    eol = filesConfig.get('eol', 'auto');
+    if (eol === 'auto') {
+      eol = os.EOL;
+    }
   }
 
   const normalizedChanges: FileChange[] = [];
@@ -77,12 +79,69 @@ export function normalizeChanges(changes: FileChange[]): FileChange[] {
       continue;
     }
 
-    let newContent = change.newContent.replace(/\r\n/g, '\n');
-    if (eol === '\r\n') {
-      newContent = newContent.replace(/\n/g, '\r\n');
+    const workspaceRoot =
+      vs?.workspace.workspaceFolders && vs.workspace.workspaceFolders.length > 0
+        ? vs.workspace.workspaceFolders[0].uri.fsPath
+        : undefined;
+
+    let existingContent: string | undefined;
+    let existingFilePath: string | undefined;
+    if (path.isAbsolute(sanitizedPath)) {
+      existingFilePath = sanitizedPath;
+    } else {
+      const baseDir = workspaceRoot ?? process.cwd();
+      const resolvedPath = path.resolve(baseDir, sanitizedPath);
+
+      if (workspaceRoot) {
+        const relativeToRoot = path.relative(workspaceRoot, resolvedPath);
+        if (!relativeToRoot.startsWith('..') && !path.isAbsolute(relativeToRoot)) {
+          existingFilePath = resolvedPath;
+        }
+      } else {
+        // When no workspace is open, or in tests, allow resolving from cwd
+        existingFilePath = resolvedPath;
+      }
     }
 
-    normalizedChanges.push({ ...change, filePath: sanitizedPath, newContent });
+    try {
+      if (existingFilePath && fs.existsSync(existingFilePath)) {
+        existingContent = fs.readFileSync(existingFilePath, 'utf8');
+      }
+    } catch {
+      // If read fails, treat as a new file.
+      existingContent = undefined;
+    }
+
+    // The parser trims the content, so newContent has no trailing whitespace.
+    // We add it back based on the original file's style.
+    let newContent = change.newContent;
+
+    if (existingContent !== undefined) {
+      // Existing file: mirror its trailing newline style.
+      if (existingContent.endsWith('\r\n\r\n') || existingContent.endsWith('\n\n')) {
+        newContent += '\n\n';
+      } else if (existingContent.endsWith('\r\n') || existingContent.endsWith('\n')) {
+        newContent += '\n';
+      }
+      // If existing file has no trailing newline, we add nothing.
+    } else {
+      // New file: add a single trailing newline if not empty, which is a common convention.
+      if (newContent.length > 0) {
+        newContent += '\n';
+      }
+    }
+
+    // Normalize to LF first, then apply the target EOL for consistency.
+    let finalContent = newContent.replace(/\r\n/g, '\n');
+    if (eol === '\r\n') {
+      finalContent = finalContent.replace(/\n/g, '\r\n');
+    }
+
+    normalizedChanges.push({
+      ...change,
+      filePath: sanitizedPath,
+      newContent: finalContent,
+    });
   }
 
   return normalizedChanges;
@@ -133,4 +192,3 @@ export async function applySingleChange(change: FileChange): Promise<vscode.Uri>
 
   return fileUri;
 }
-

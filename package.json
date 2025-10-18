@@ -2,7 +2,7 @@
   "name": "auto-patch",
   "displayName": "Auto Patch",
   "description": "Apply code changes from an LLM response directly from clipboard.",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "ayurkin",
   "icon": "resources/icon.png",
   "license": "MIT",

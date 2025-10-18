@@ -47,62 +47,50 @@ suite('utils helpers', () => {
     assert.strictEqual(uri.toString(), 'auto-patch:/file.ts');
   });
 
-  test('normalizeChanges appends a trailing blank line', () => {
+  test('normalizeChanges adds a trailing newline for new files', () => {
     const [normalized] = normalizeChanges([
       { filePath: 'tmp-test-files/new-file.ts', newContent: "console.log('hi');" },
     ]);
 
     assert.strictEqual(
       normalized.newContent,
-      `console.log('hi');${os.EOL}${os.EOL}`,
-      'content should end with a blank line',
+      `console.log('hi');${os.EOL}`,
+      'content should end with a single newline'
     );
   });
 
-  test('normalizeChanges preserves existing trailing blank lines', () => {
-    const contentWithBlankLine = `console.log('hi');${os.EOL}${os.EOL}`;
-    const [normalized] = normalizeChanges([
-      { filePath: 'tmp-test-files/preserved-file.ts', newContent: contentWithBlankLine },
-    ]);
-
-    assert.strictEqual(normalized.newContent, contentWithBlankLine);
+  test('normalizeChanges does not add a trailing newline for new empty files', () => {
+    const [normalized] = normalizeChanges([{ filePath: 'tmp-test-files/new-empty-file.ts', newContent: '' }]);
+    assert.strictEqual(normalized.newContent, '', 'empty content should remain empty');
   });
 
-  test('normalizeChanges mirrors existing trailing blank line when missing in new content', () => {
+  test('normalizeChanges preserves existing trailing blank line', () => {
     const filePath = path.join(tempDir, 'existing-with-blank.txt');
     fs.writeFileSync(filePath, `console.log('existing');${os.EOL}${os.EOL}`);
 
     const relativePath = path.relative(process.cwd(), filePath).replace(/\\/g, '/');
-    const [normalized] = normalizeChanges([
-      { filePath: relativePath, newContent: "console.log('updated');" },
-    ]);
+    const [normalized] = normalizeChanges([{ filePath: relativePath, newContent: "console.log('updated');" }]);
 
     assert.strictEqual(normalized.newContent, `console.log('updated');${os.EOL}${os.EOL}`);
   });
 
-  test('normalizeChanges does not add blank line when existing file lacks it', () => {
-    const filePath = path.join(tempDir, 'existing-without-blank.txt');
+  test('normalizeChanges preserves existing single trailing newline', () => {
+    const filePath = path.join(tempDir, 'existing-with-single-newline.txt');
     fs.writeFileSync(filePath, `console.log('existing');${os.EOL}`);
 
     const relativePath = path.relative(process.cwd(), filePath).replace(/\\/g, '/');
-    const [normalized] = normalizeChanges([
-      { filePath: relativePath, newContent: "console.log('updated');" },
-    ]);
+    const [normalized] = normalizeChanges([{ filePath: relativePath, newContent: "console.log('updated');" }]);
 
-    assert.strictEqual(normalized.newContent, "console.log('updated');");
+    assert.strictEqual(normalized.newContent, `console.log('updated');${os.EOL}`);
   });
 
-  test('normalizeChanges keeps single trailing blank line when already present', () => {
-    const filePath = path.join(tempDir, 'existing-with-blank-preserved.txt');
-    const blankContent = `console.log('existing');${os.EOL}${os.EOL}`;
-    fs.writeFileSync(filePath, blankContent);
+  test('normalizeChanges does not add newline when existing file has none', () => {
+    const filePath = path.join(tempDir, 'existing-without-newline.txt');
+    fs.writeFileSync(filePath, `console.log('existing');`); // No EOL
 
     const relativePath = path.relative(process.cwd(), filePath).replace(/\\/g, '/');
-    const updatedContent = `console.log('updated');${os.EOL}${os.EOL}`;
-    const [normalized] = normalizeChanges([
-      { filePath: relativePath, newContent: updatedContent },
-    ]);
+    const [normalized] = normalizeChanges([{ filePath: relativePath, newContent: "console.log('updated');" }]);
 
-    assert.strictEqual(normalized.newContent, updatedContent);
+    assert.strictEqual(normalized.newContent, "console.log('updated');");
   });
 });

@@ -35,6 +35,25 @@ export class FileChangeProvider implements vscode.TreeDataProvider<FileChangeIte
     this._onDidChangeTreeData.fire();
   }
 
+  findChange(filePath: string): FileChange | undefined {
+    const isCaseInsensitive = process.platform === 'win32' || process.platform === 'darwin';
+    const lowerFilePath = filePath.toLowerCase();
+
+    return this._changes.find(c => {
+      if (isCaseInsensitive) {
+        return c.filePath.toLowerCase() === lowerFilePath;
+      }
+      return c.filePath === filePath;
+    });
+  }
+
+  updateChangeContent(filePath: string, newContent: string): void {
+    const change = this.findChange(filePath);
+    if (change && change.newContent !== newContent) {
+      change.newContent = newContent;
+    }
+  }
+
   clear(): void {
     this._changes = [];
     this._updateContext();
@@ -74,13 +93,23 @@ export class FileChangeProvider implements vscode.TreeDataProvider<FileChangeIte
   }
 }
 
-export class FileChangeContentProvider implements vscode.TextDocumentContentProvider {
-  private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
-  readonly onDidChange = this._onDidChange.event;
+export class AutoPatchFileSystemProvider implements vscode.FileSystemProvider {
+  private _onDidChangeFile = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
+  readonly onDidChangeFile = this._onDidChangeFile.event;
 
   constructor(private readonly provider: FileChangeProvider) {}
 
+  private _getDecodedPath(uri: vscode.Uri): string {
+    const encodedPath = uri.path.startsWith('/') ? uri.path.substring(1) : uri.path;
+    try {
+      return decodeURIComponent(encodedPath);
+    } catch {
+      return encodedPath;
+    }
+  }
+
   public notifyChanges(scheme: string, changes: FileChange[]) {
+    const events: vscode.FileChangeEvent[] = [];
     const seen = new Set<string>();
     for (const change of changes) {
       if (seen.has(change.filePath)) {
@@ -88,34 +117,60 @@ export class FileChangeContentProvider implements vscode.TextDocumentContentProv
       }
       seen.add(change.filePath);
       const uri = toVirtualDocumentUri(scheme, change.filePath);
-      this._onDidChange.fire(uri);
+      events.push({ type: vscode.FileChangeType.Changed, uri });
+    }
+    if (events.length > 0) {
+      this._onDidChangeFile.fire(events);
     }
   }
 
-  provideTextDocumentContent(uri: vscode.Uri): string {
-    // The path from a URI is URL-encoded (e.g., spaces become %20). We must decode it
-    // to correctly match against the file path string.
-    const encodedPath = uri.path.startsWith('/') ? uri.path.substring(1) : uri.path;
-    let requestedPath: string;
-    try {
-      requestedPath = decodeURIComponent(encodedPath);
-    } catch {
-      requestedPath = encodedPath;
-    }
-    
-    const isCaseInsensitive = process.platform === 'win32' || process.platform === 'darwin';
+  watch(uri: vscode.Uri, options: { recursive: boolean; excludes: string[] }): vscode.Disposable {
+    // Watching is not needed for this use case.
+    return new vscode.Disposable(() => {});
+  }
 
-    const change = this.provider.getChanges().find(c => {
-      if (isCaseInsensitive) {
-        return c.filePath.toLowerCase() === requestedPath.toLowerCase();
-      }
-      return c.filePath === requestedPath;
-    });
-    
+  stat(uri: vscode.Uri): vscode.FileStat {
+    const filePath = this._getDecodedPath(uri);
+    const change = this.provider.findChange(filePath);
+
     if (change) {
-      return change.newContent;
+      return {
+        type: vscode.FileType.File,
+        ctime: Date.now(),
+        mtime: Date.now(),
+        size: Buffer.from(change.newContent, 'utf8').length,
+      };
     }
+    throw vscode.FileSystemError.FileNotFound(uri);
+  }
 
-    return `// Change for "${requestedPath}" is no longer available.\n// It may have been applied or discarded.`;
+  readFile(uri: vscode.Uri): Uint8Array {
+    const filePath = this._getDecodedPath(uri);
+    const change = this.provider.findChange(filePath);
+    if (change) {
+      return Buffer.from(change.newContent, 'utf8');
+    }
+    throw vscode.FileSystemError.FileNotFound(uri);
+  }
+
+  writeFile(uri: vscode.Uri, content: Uint8Array, options: { create: boolean; overwrite: boolean }): void {
+    const filePath = this._getDecodedPath(uri);
+    const newContent = Buffer.from(content).toString('utf8');
+    this.provider.updateChangeContent(filePath, newContent);
+    this._onDidChangeFile.fire([{ type: vscode.FileChangeType.Changed, uri }]);
+  }
+
+  // The following methods are not required for this extension's functionality.
+  readDirectory(uri: vscode.Uri): [string, vscode.FileType][] {
+    throw vscode.FileSystemError.Unavailable('readDirectory is not available');
+  }
+  createDirectory(uri: vscode.Uri): void {
+    throw vscode.FileSystemError.Unavailable('createDirectory is not available');
+  }
+  delete(uri: vscode.Uri, options: { recursive: boolean }): void {
+    throw vscode.FileSystemError.Unavailable('delete is not available');
+  }
+  rename(oldUri: vscode.Uri, newUri: vscode.Uri, options: { overwrite: boolean }): void {
+    throw vscode.FileSystemError.Unavailable('rename is not available');
   }
 }

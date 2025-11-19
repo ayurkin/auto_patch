@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
-import { FileChangeProvider, FileChangeContentProvider } from './providers';
+import { FileChangeProvider, AutoPatchFileSystemProvider } from './providers';
 import { parseLLMResponse } from './parser';
-import { normalizeChanges, getNonce } from './utils';
+import { normalizeChanges, getNonce, resolveWorkspaceFileUri } from './utils';
+import { FileChange } from './types';
 
 export class InputViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
@@ -9,7 +10,7 @@ export class InputViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly _context: vscode.ExtensionContext,
     private readonly _changeProvider: FileChangeProvider,
-    private readonly _contentProvider: FileChangeContentProvider,
+    private readonly _fileSystemProvider: AutoPatchFileSystemProvider,
     private readonly _scheme: string
   ) {}
 
@@ -21,8 +22,8 @@ export class InputViewProvider implements vscode.WebviewViewProvider {
     const oldChanges = this._changeProvider.getChanges();
     if (oldChanges.length > 0) {
       this._changeProvider.clear();
-      // Notify the content provider that the virtual documents for the old changes are now invalid.
-      this._contentProvider.notifyChanges(this._scheme, oldChanges);
+      // Notify the file system provider that the virtual documents for the old changes are now invalid.
+      this._fileSystemProvider.notifyChanges(this._scheme, oldChanges);
     }
   }
 
@@ -48,10 +49,10 @@ export class InputViewProvider implements vscode.WebviewViewProvider {
     const lastState = this._context.workspaceState.get('auto-patch.lastInput', '');
     webviewView.webview.postMessage({ command: 'restoreState', text: lastState });
 
-    webviewView.webview.onDidReceiveMessage(message => {
+    webviewView.webview.onDidReceiveMessage(async message => {
       switch (message.command) {
         case 'previewChanges':
-          this._runPreview(message.text);
+          await this._runPreview(message.text);
           return;
         case 'saveState':
           this._context.workspaceState.update('auto-patch.lastInput', message.text);
@@ -67,10 +68,10 @@ export class InputViewProvider implements vscode.WebviewViewProvider {
     const text = await vscode.env.clipboard.readText();
     this._view?.webview.postMessage({ command: 'restoreState', text });
     this._context.workspaceState.update('auto-patch.lastInput', text);
-    this._runPreview(text);
+    await this._runPreview(text);
   }
 
-  private _runPreview(text: string) {
+  private async _runPreview(text: string) {
     if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
       vscode.window.showErrorMessage('Auto Patch: Please open a folder in the workspace.');
       return;
@@ -78,19 +79,53 @@ export class InputViewProvider implements vscode.WebviewViewProvider {
     const oldChanges = this._changeProvider.getChanges();
     const parsed = parseLLMResponse(text);
     const normalized = normalizeChanges(parsed);
-    if (normalized.length === 0 && text.trim().length > 0) {
-      vscode.window.showInformationMessage('Auto Patch: No valid file changes found in input.');
+
+    const pendingChanges: FileChange[] = [];
+    for (const change of normalized) {
+      let isDifferent = true;
+      try {
+        const fileUri = resolveWorkspaceFileUri(change.filePath);
+        const currentContentBuffer = await vscode.workspace.fs.readFile(fileUri);
+        const currentContent = Buffer.from(currentContentBuffer).toString('utf8');
+
+        // Normalize both contents' line endings to LF before comparing to avoid issues with git autocrlf etc.
+        const normalizedCurrent = currentContent.replace(/\r\n/g, '\n');
+        const normalizedNew = change.newContent.replace(/\r\n/g, '\n');
+
+        if (normalizedCurrent === normalizedNew) {
+          isDifferent = false;
+        }
+      } catch (error) {
+        // File doesn't exist, so it's a new file change. Keep it, unless its content is empty.
+        if (error instanceof vscode.FileSystemError && error.code === 'FileNotFound') {
+          if (change.newContent.length > 0) {
+            isDifferent = true;
+          } else {
+            // It's a new, empty file. No change to apply.
+            isDifferent = false;
+          }
+        }
+        // For other errors, we assume it's a valid change to show to the user.
+      }
+
+      if (isDifferent) {
+        pendingChanges.push(change);
+      }
     }
-    this._changeProvider.setChanges(normalized);
+
+    if (pendingChanges.length === 0 && text.trim().length > 0) {
+      vscode.window.showInformationMessage('Auto Patch: No changes to apply. Content is identical to the workspace.');
+    }
+    this._changeProvider.setChanges(pendingChanges);
 
     // Notify VS Code about all files that might have been affected (old ones removed, new ones added)
     // to ensure any open diff views are correctly updated.
-    const allAffectedChanges = [...oldChanges, ...normalized];
+    const allAffectedChanges = [...oldChanges, ...pendingChanges];
     const uniquePaths = [...new Set(allAffectedChanges.map(c => c.filePath))];
     const uniqueChanges = uniquePaths.map(p => ({ filePath: p, newContent: '' })); // Content doesn't matter here
-    this._contentProvider.notifyChanges(this._scheme, uniqueChanges);
+    this._fileSystemProvider.notifyChanges(this._scheme, uniqueChanges);
 
-    if (normalized.length > 0) {
+    if (pendingChanges.length > 0) {
       vscode.commands.executeCommand('auto-patch-changes-view.focus');
     }
   }

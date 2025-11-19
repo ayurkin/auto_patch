@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { FileChangeProvider, FileChangeContentProvider } from './providers';
+import { FileChangeProvider, AutoPatchFileSystemProvider } from './providers';
 import { InputViewProvider } from './webview';
 import { registerCommands } from './commands';
 
@@ -8,13 +8,18 @@ export function activate(context: vscode.ExtensionContext) {
 
   const scheme = 'auto-patch';
   const fileChangeProvider = new FileChangeProvider();
-  const fileChangeContentProvider = new FileChangeContentProvider(fileChangeProvider);
-  
-  context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider(scheme, fileChangeContentProvider));
+  const fileSystemProvider = new AutoPatchFileSystemProvider(fileChangeProvider);
+
+  context.subscriptions.push(
+    vscode.workspace.registerFileSystemProvider(scheme, fileSystemProvider, {
+      isCaseSensitive: process.platform !== 'win32' && process.platform !== 'darwin',
+    })
+  );
+
   const treeView = vscode.window.createTreeView('auto-patch-changes-view', { treeDataProvider: fileChangeProvider });
   context.subscriptions.push(treeView);
 
-  const inputViewProvider = new InputViewProvider(context, fileChangeProvider, fileChangeContentProvider, scheme);
+  const inputViewProvider = new InputViewProvider(context, fileChangeProvider, fileSystemProvider, scheme);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('auto-patch-input-view', inputViewProvider, {
       webviewOptions: { retainContextWhenHidden: true },
@@ -22,7 +27,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // Register all commands
-  registerCommands(context, fileChangeProvider, fileChangeContentProvider, inputViewProvider, scheme);
+  registerCommands(context, fileChangeProvider, fileSystemProvider, inputViewProvider, scheme);
 }
 
 export function deactivate() {}

@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
-import { FileChangeProvider, FileChangeItem, FileChangeContentProvider } from './providers';
+import { FileChangeProvider, FileChangeItem, AutoPatchFileSystemProvider } from './providers';
 import { InputViewProvider } from './webview';
 import { applySingleChange, resolveWorkspaceFileUri, toVirtualDocumentUri } from './utils';
+import { FileChange } from './types';
 
 /**
  * Helper to ensure commands are run on valid tree items from the "Changes" view.
@@ -17,10 +18,32 @@ const ensureFileChangeItem = (item: any, commandTitle: string): item is FileChan
   return false;
 };
 
+/**
+ * Applies a single file change, updates the providers, and shows error messages.
+ * @returns The URI of the applied file on success, or undefined on failure.
+ */
+async function applyAndRefresh(
+  change: FileChange,
+  fileChangeProvider: FileChangeProvider,
+  fileSystemProvider: AutoPatchFileSystemProvider,
+  scheme: string
+): Promise<vscode.Uri | undefined> {
+  try {
+    const fileUri = await applySingleChange(change);
+    fileChangeProvider.removeChange(change);
+    fileSystemProvider.notifyChanges(scheme, [change]);
+    return fileUri;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    vscode.window.showErrorMessage(`Failed to apply change to ${change.filePath}: ${message}`);
+    return undefined;
+  }
+}
+
 export function registerCommands(
   context: vscode.ExtensionContext,
   fileChangeProvider: FileChangeProvider,
-  fileChangeContentProvider: FileChangeContentProvider,
+  fileSystemProvider: AutoPatchFileSystemProvider,
   inputViewProvider: InputViewProvider,
   scheme: string
 ): void {
@@ -64,14 +87,9 @@ export function registerCommands(
       if (!ensureFileChangeItem(item, 'Apply Change')) {
         return;
       }
-      try {
-        const fileUri = await applySingleChange(item.change);
-        fileChangeProvider.removeChange(item.change);
-        fileChangeContentProvider.notifyChanges(scheme, [item.change]);
+      const fileUri = await applyAndRefresh(item.change, fileChangeProvider, fileSystemProvider, scheme);
+      if (fileUri) {
         await vscode.window.showTextDocument(fileUri);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        vscode.window.showErrorMessage(`Failed to apply change to ${item.change.filePath}: ${message}`);
       }
     })
   );
@@ -82,7 +100,7 @@ export function registerCommands(
         return;
       }
       fileChangeProvider.removeChange(item.change);
-      fileChangeContentProvider.notifyChanges(scheme, [item.change]);
+      fileSystemProvider.notifyChanges(scheme, [item.change]);
     })
   );
 
@@ -104,29 +122,19 @@ export function registerCommands(
           const total = changes.length;
           let appliedCount = 0;
           let failed = false;
-          const applied: typeof changes = [];
 
           for (const change of changes) {
             const increment = (1 / total) * 100;
             progress.report({ message: `Applying ${change.filePath}`, increment });
 
-            try {
-              await applySingleChange(change);
-              fileChangeProvider.removeChange(change);
-              applied.push(change);
+            const fileUri = await applyAndRefresh(change, fileChangeProvider, fileSystemProvider, scheme);
+            if (fileUri) {
               appliedCount++;
-            } catch (error) {
-              const message = error instanceof Error ? error.message : String(error);
-              vscode.window.showErrorMessage(
-                `Failed to apply change to ${change.filePath}: ${message}. Aborting remaining changes.`
-              );
+            } else {
+              // Error message is shown by applyAndRefresh
               failed = true;
               break;
             }
-          }
-
-          if (applied.length > 0) {
-            fileChangeContentProvider.notifyChanges(scheme, applied);
           }
 
           if (appliedCount > 0) {
@@ -147,6 +155,35 @@ export function registerCommands(
         return;
       }
       inputViewProvider.discardChanges();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('auto-patch.applyChangeFromEditor', async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (editor && editor.document.uri.scheme === scheme) {
+        const encodedPath = editor.document.uri.path.startsWith('/')
+          ? editor.document.uri.path.substring(1)
+          : editor.document.uri.path;
+
+        let filePath: string;
+        try {
+          filePath = decodeURIComponent(encodedPath);
+        } catch {
+          filePath = encodedPath;
+        }
+
+        const change = fileChangeProvider.findChange(filePath);
+        if (change) {
+          const fileUri = await applyAndRefresh(change, fileChangeProvider, fileSystemProvider, scheme);
+          if (fileUri) {
+            await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+            await vscode.window.showTextDocument(fileUri);
+          }
+        } else {
+          vscode.window.showWarningMessage(`Could not find the change for "${filePath}". It may have already been applied or discarded.`);
+        }
+      }
     })
   );
 }
